@@ -101,7 +101,4 @@ lerna-debug.log*
 *.bak
 *.backup
 
-# ----------------------------------------
-# Documentation (internal/draft)
-# ----------------------------------------
-docs/
+
