@@ -1,0 +1,139 @@
+# Dependabot configuration for SettleOnce
+# Keeps all dependencies up to date across all package ecosystems
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+
+updates:
+  # Frontend - Next.js/React (npm)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(frontend):"
+    labels:
+      - "dependencies"
+      - "frontend"
+    groups:
+      # Group React ecosystem updates together
+      react:
+        patterns:
+          - "react*"
+          - "@types/react*"
+      # Group wagmi/viem updates together
+      web3:
+        patterns:
+          - "wagmi"
+          - "viem"
+          - "@rainbow-me/*"
+      # Group Next.js updates
+      nextjs:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+      # Group TanStack updates
+      tanstack:
+        patterns:
+          - "@tanstack/*"
+      # Group TypeScript/ESLint tooling
+      tooling:
+        patterns:
+          - "typescript"
+          - "eslint*"
+          - "@types/*"
+      # Group Tailwind updates
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "postcss*"
+
+  # Smart Contracts - Hardhat/Solidity (npm)
+  - package-ecosystem: "npm"
+    directory: "/contracts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(contracts):"
+    labels:
+      - "dependencies"
+      - "contracts"
+    groups:
+      # Group Hardhat ecosystem
+      hardhat:
+        patterns:
+          - "hardhat"
+          - "@nomicfoundation/*"
+      # Group OpenZeppelin contracts
+      openzeppelin:
+        patterns:
+          - "@openzeppelin/*"
+      # Group TypeScript tooling
+      typescript:
+        patterns:
+          - "typescript"
+          - "ts-node"
+          - "@types/*"
+
+  # Backend - Rust (cargo)
+  - package-ecosystem: "cargo"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(backend):"
+    labels:
+      - "dependencies"
+      - "backend"
+      - "rust"
+    groups:
+      # Group Axum web framework
+      axum:
+        patterns:
+          - "axum*"
+          - "tower*"
+      # Group Tokio async runtime
+      tokio:
+        patterns:
+          - "tokio*"
+      # Group serialization
+      serde:
+        patterns:
+          - "serde*"
+      # Group error handling
+      errors:
+        patterns:
+          - "thiserror"
+          - "anyhow"
+      # Group logging/tracing
+      tracing:
+        patterns:
+          - "tracing*"
+
+  # GitHub Actions (if any workflows exist)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(actions):"
+    labels:
+      - "dependencies"
+      - "ci"
