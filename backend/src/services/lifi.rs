@@ -94,9 +94,7 @@ impl LifiService {
             .unwrap_or("0")
             .to_string();
 
-        let estimated_time = data["estimate"]["executionDuration"]
-            .as_u64()
-            .unwrap_or(0);
+        let estimated_time = data["estimate"]["executionDuration"].as_u64().unwrap_or(0);
 
         Ok(QuoteResult {
             to_amount,
