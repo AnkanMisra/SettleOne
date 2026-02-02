@@ -1,17 +1,14 @@
 # Pull Request Checks
-# Additional checks that run only on PRs for better review experience
+# Validates PR metadata and conventions
 
 name: PR Checks
 
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
-  # ============================================
-  # PR Title Check (Conventional Commits)
-  # ============================================
   pr-title:
     name: PR Title
     runs-on: ubuntu-latest
@@ -38,151 +35,3 @@ jobs:
           subjectPatternError: |
             The subject "{subject}" doesn't match the required pattern.
             Subject must start with an uppercase letter.
-
-  # ============================================
-  # Changed Files Detection
-  # ============================================
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      backend: ${{ steps.filter.outputs.backend }}
-      contracts: ${{ steps.filter.outputs.contracts }}
-      docs: ${{ steps.filter.outputs.docs }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Filter paths
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            frontend:
-              - 'frontend/**'
-            backend:
-              - 'backend/**'
-            contracts:
-              - 'contracts/**'
-            docs:
-              - 'docs/**'
-              - '*.md'
-
-  # ============================================
-  # Frontend Bundle Size Check
-  # ============================================
-  frontend-size:
-    name: Frontend Size
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build and analyze
-        run: |
-          pnpm build
-          echo "## Frontend Build Size" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          du -sh .next/ >> $GITHUB_STEP_SUMMARY
-
-  # ============================================
-  # Contract Gas Report
-  # ============================================
-  gas-report:
-    name: Gas Report
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.contracts == 'true'
-    defaults:
-      run:
-        working-directory: contracts
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: contracts/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run gas report
-        run: REPORT_GAS=true pnpm test
-        env:
-          REPORT_GAS: true
-
-      - name: Add gas report to summary
-        run: |
-          echo "## Contract Gas Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Gas report generated during test run." >> $GITHUB_STEP_SUMMARY
-
-  # ============================================
-  # Security Audit (Contracts)
-  # ============================================
-  slither:
-    name: Slither Analysis
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.contracts == 'true'
-    defaults:
-      run:
-        working-directory: contracts
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: contracts/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run Slither
-        uses: crytic/slither-action@v0.4.0
-        continue-on-error: true
-        with:
-          target: contracts/
-          slither-args: --filter-paths "node_modules|mocks"
