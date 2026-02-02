@@ -12,6 +12,10 @@ Guidelines for AI coding agents working on this cross-chain USDC payment platfor
 - Never commit `.env` files or secrets
 
 ### Code Changes
+- **Verify locally before pushing**:
+  - Rust: `cargo check && cargo test && cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings`
+  - TypeScript: `pnpm lint && pnpm build`
+  - Solidity: `pnpm test`
 - Always run `cargo fmt` before committing Rust code
 - Always run `pnpm lint` before committing TypeScript code
 - Verify code compiles/builds before committing
