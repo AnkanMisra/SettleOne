@@ -1,8 +1,7 @@
 //! Utility functions
 
-#![allow(dead_code)]
-
 /// Format an Ethereum address for display
+#[allow(dead_code)]
 pub fn format_address(address: &str, chars: usize) -> String {
     if address.len() < chars * 2 + 2 {
         return address.to_string();
@@ -15,6 +14,7 @@ pub fn format_address(address: &str, chars: usize) -> String {
 }
 
 /// Validate Ethereum address format
+#[allow(dead_code)]
 pub fn is_valid_address(address: &str) -> bool {
     if !address.starts_with("0x") {
         return false;
@@ -26,6 +26,7 @@ pub fn is_valid_address(address: &str) -> bool {
 }
 
 /// Validate ENS name format
+#[allow(dead_code)]
 pub fn is_valid_ens(name: &str) -> bool {
     if !name.ends_with(".eth") {
         return false;

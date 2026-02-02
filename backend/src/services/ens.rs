@@ -1,7 +1,5 @@
 //! ENS resolution service
 
-#![allow(dead_code)]
-
 use thiserror::Error;
 
 /// ENS resolution errors
@@ -14,6 +12,7 @@ pub enum EnsError {
     NotFound(String),
 
     #[error("Resolution failed: {0}")]
+    #[allow(dead_code)]
     ResolutionFailed(String),
 }
 
@@ -25,16 +24,18 @@ pub struct EnsResult {
 
 /// ENS resolution service
 pub struct EnsService {
-    rpc_url: String,
+    _rpc_url: String,
 }
 
 impl EnsService {
     /// Create a new ENS service
     pub fn new() -> Self {
-        let rpc_url =
-            std::env::var("ETH_RPC_URL").unwrap_or_else(|_| "https://eth.llamarpc.com".to_string());
+        let rpc_url = std::env::var("ETH_RPC_URL").unwrap_or_else(|_| {
+            tracing::warn!("ETH_RPC_URL not set, using public fallback (may be rate limited)");
+            "https://eth.llamarpc.com".to_string()
+        });
 
-        Self { rpc_url }
+        Self { _rpc_url: rpc_url }
     }
 
     /// Resolve an ENS name to an address

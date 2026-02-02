@@ -1,7 +1,5 @@
 //! Session and payment models
 
-#![allow(dead_code)]
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +13,16 @@ pub enum SessionStatus {
     Cancelled,
 }
 
-/// Payment within a session
+/// Payment status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PaymentStatus {
+    Pending,
+    Confirmed,
+    Settled,
+}
+
+/// Payment model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Payment {
     pub id: String,
@@ -26,16 +33,7 @@ pub struct Payment {
     pub created_at: DateTime<Utc>,
 }
 
-/// Payment status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum PaymentStatus {
-    Pending,
-    Confirmed,
-    Settled,
-}
-
-/// Session data
+/// Session model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
@@ -46,6 +44,7 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 impl Session {
     /// Create a new session
     pub fn new(id: String, user: String) -> Self {
@@ -67,12 +66,13 @@ impl Session {
 
     /// Recalculate total amount
     fn recalculate_total(&mut self) {
-        // TODO: Proper big number handling
-        let total: u128 = self
-            .payments
-            .iter()
-            .filter_map(|p| p.amount.parse::<u128>().ok())
-            .sum();
+        // Simple string addition for now - in production use bigdecimal
+        let mut total: u128 = 0;
+        for payment in &self.payments {
+            if let Ok(amount) = payment.amount.parse::<u128>() {
+                total += amount;
+            }
+        }
         self.total_amount = total.to_string();
     }
 }

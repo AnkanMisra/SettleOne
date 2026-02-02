@@ -1,7 +1,5 @@
 //! Session management service
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -9,10 +7,12 @@ use tokio::sync::RwLock;
 use crate::models::session::{Payment, Session, SessionStatus};
 
 /// Session store (in-memory for hackathon)
+#[allow(dead_code)]
 pub struct SessionStore {
     sessions: Arc<RwLock<HashMap<String, Session>>>,
 }
 
+#[allow(dead_code)]
 impl SessionStore {
     /// Create a new session store
     pub fn new() -> Self {
@@ -63,10 +63,12 @@ impl Default for SessionStore {
 }
 
 /// Session service
+#[allow(dead_code)]
 pub struct SessionService {
     store: SessionStore,
 }
 
+#[allow(dead_code)]
 impl SessionService {
     /// Create a new session service
     pub fn new() -> Self {

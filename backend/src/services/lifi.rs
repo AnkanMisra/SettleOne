@@ -1,7 +1,5 @@
 //! LI.FI cross-chain quote service
 
-#![allow(dead_code)]
-
 use thiserror::Error;
 
 use crate::api::quote::QuoteRequest;
@@ -10,12 +8,14 @@ use crate::api::quote::QuoteRequest;
 #[derive(Error, Debug)]
 pub enum LifiError {
     #[error("No route available")]
+    #[allow(dead_code)]
     NoRoute,
 
     #[error("API request failed: {0}")]
     ApiError(String),
 
     #[error("Invalid chain: {0}")]
+    #[allow(dead_code)]
     InvalidChain(String),
 }
 
