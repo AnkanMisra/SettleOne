@@ -2,6 +2,28 @@
 
 Guidelines for AI coding agents working on this cross-chain USDC payment platform.
 
+## Agent Rules & Restrictions
+
+### Git Operations
+- **NEVER create Pull Requests** - The agent does not have privileges to create PRs
+- **Commits and pushes only when explicitly asked** by the user
+- Always use conventional commit messages (e.g., `feat:`, `fix:`, `docs:`, `ci:`)
+- Never force push to main branch
+- Never commit `.env` files or secrets
+
+### Code Changes
+- Always run `cargo fmt` before committing Rust code
+- Always run `pnpm lint` before committing TypeScript code
+- Verify code compiles/builds before committing
+- Write meaningful commit messages that describe the "why"
+
+### Communication
+- If unsure about a destructive action, ask the user first
+- Report test failures or build errors immediately
+- Summarize changes made after completing tasks
+
+---
+
 ## Project Overview
 
 SettleOne is a cross-chain, identity-powered, gasless USDC payment platform using:
