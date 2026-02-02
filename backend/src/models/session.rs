@@ -69,8 +69,12 @@ impl Session {
         // Simple string addition for now - in production use bigdecimal
         let mut total: u128 = 0;
         for payment in &self.payments {
-            if let Ok(amount) = payment.amount.parse::<u128>() {
-                total += amount;
+            match payment.amount.parse::<u128>() {
+                Ok(amount) => total = total.saturating_add(amount),
+                Err(_) => {
+                    tracing::warn!("Failed to parse payment amount: {}", payment.amount);
+                    continue;
+                }
             }
         }
         self.total_amount = total.to_string();

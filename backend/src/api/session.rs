@@ -24,8 +24,7 @@ pub struct CreateSessionResponse {
 #[derive(Deserialize)]
 pub struct AddPaymentRequest {
     pub recipient: String,
-    #[serde(rename = "recipient_ens")]
-    pub _recipient_ens: Option<String>,
+    pub recipient_ens: Option<String>,
     pub amount: String, // String to handle large numbers
 }
 
@@ -77,10 +76,11 @@ pub async fn add_payment(
     Json(payload): Json<AddPaymentRequest>,
 ) -> Result<Json<SessionResponse>, AppError> {
     tracing::info!(
-        "Adding payment to session {}: {} to {}",
+        "Adding payment to session {}: {} to {} (ENS: {:?})",
         id,
         payload.amount,
-        payload.recipient
+        payload.recipient,
+        payload.recipient_ens
     );
 
     // TODO: Add to session store

@@ -87,12 +87,16 @@ impl LifiService {
             .unwrap_or("0")
             .to_string();
 
-        let estimated_gas = data["estimate"]["gasCosts"][0]["amount"]
-            .as_str()
+        let estimated_gas = data["estimate"]["gasCosts"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|cost| cost["amount"].as_str())
             .unwrap_or("0")
             .to_string();
 
-        let estimated_time = data["estimate"]["executionDuration"].as_u64().unwrap_or(0);
+        let estimated_time = data["estimate"]["executionDuration"]
+            .as_u64()
+            .unwrap_or(0);
 
         Ok(QuoteResult {
             to_amount,
