@@ -39,8 +39,9 @@ impl SessionStore {
     pub async fn add_payment(&self, session_id: &str, payment: Payment) -> Option<Session> {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
-            session.add_payment(payment);
-            return Some(session.clone());
+            if session.add_payment(payment).is_ok() {
+                return Some(session.clone());
+            }
         }
         None
     }

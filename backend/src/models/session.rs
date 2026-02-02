@@ -59,24 +59,36 @@ impl Session {
     }
 
     /// Add a payment to the session
-    pub fn add_payment(&mut self, payment: Payment) {
+    pub fn add_payment(&mut self, payment: Payment) -> Result<(), String> {
         self.payments.push(payment);
-        self.recalculate_total();
+        if let Err(e) = self.recalculate_total() {
+            // Rollback payment addition if total calculation fails
+            self.payments.pop();
+            return Err(e);
+        }
+        Ok(())
     }
 
     /// Recalculate total amount
-    fn recalculate_total(&mut self) {
+    fn recalculate_total(&mut self) -> Result<(), String> {
         // Simple string addition for now - in production use bigdecimal
         let mut total: u128 = 0;
         for payment in &self.payments {
             match payment.amount.parse::<u128>() {
-                Ok(amount) => total = total.saturating_add(amount),
+                Ok(amount) => {
+                    total = total
+                        .checked_add(amount)
+                        .ok_or_else(|| "Total amount overflow".to_string())?;
+                }
                 Err(_) => {
-                    tracing::warn!("Failed to parse payment amount: {}", payment.amount);
-                    continue;
+                    return Err(format!(
+                        "Failed to parse payment amount: {}",
+                        payment.amount
+                    ));
                 }
             }
         }
         self.total_amount = total.to_string();
+        Ok(())
     }
 }
