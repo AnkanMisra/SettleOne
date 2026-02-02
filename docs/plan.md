@@ -216,26 +216,22 @@
 
 #### Action Items
 
-- [ ] **4.1** Create API route structure
+- [x] **4.1** Create API route structure
   ```
-  app/api/
-  ├── session/
-  │   ├── route.ts          # POST: create, GET: list
-  │   └── [id]/route.ts     # GET: status, DELETE: cancel
-  ├── quote/
-  │   └── route.ts          # GET: LI.FI quote proxy
-  └── health/
-      └── route.ts          # GET: health check
+  backend/src/api/
+  ├── session.rs        # POST: create, GET: list, status
+  ├── quote.rs          # GET: LI.FI quote proxy
+  └── ens.rs            # GET: ENS resolution
   ```
 
-- [ ] **4.2** Implement session storage (temporary)
-  - In-memory store for hackathon (Map or Redis)
+- [x] **4.2** Implement session storage (temporary)
+  - In-memory store for hackathon (HashMap + RwLock)
   - Store session ID, user address, payments array, status
 
-- [ ] **4.3** Create LI.FI proxy endpoint
+- [x] **4.3** Create LI.FI proxy endpoint
   - Server-side quote fetching (avoids CORS)
-  - Cache quotes for 30 seconds
-  - Rate limiting protection
+  - Cache quotes (not implemented yet, direct proxy)
+  - Rate limiting protection (via env var fallback warning)
 
 - [ ] **4.4** Add request validation
   - Validate addresses (checksummed)
