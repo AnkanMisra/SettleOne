@@ -13,7 +13,16 @@ pub enum SessionStatus {
     Cancelled,
 }
 
-/// Payment within a session
+/// Payment status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PaymentStatus {
+    Pending,
+    Confirmed,
+    Settled,
+}
+
+/// Payment model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Payment {
     pub id: String,
@@ -24,16 +33,7 @@ pub struct Payment {
     pub created_at: DateTime<Utc>,
 }
 
-/// Payment status
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum PaymentStatus {
-    Pending,
-    Confirmed,
-    Settled,
-}
-
-/// Session data
+/// Session model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
@@ -44,6 +44,7 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 impl Session {
     /// Create a new session
     pub fn new(id: String, user: String) -> Self {
@@ -58,19 +59,36 @@ impl Session {
     }
 
     /// Add a payment to the session
-    pub fn add_payment(&mut self, payment: Payment) {
+    pub fn add_payment(&mut self, payment: Payment) -> Result<(), String> {
         self.payments.push(payment);
-        self.recalculate_total();
+        if let Err(e) = self.recalculate_total() {
+            // Rollback payment addition if total calculation fails
+            self.payments.pop();
+            return Err(e);
+        }
+        Ok(())
     }
 
     /// Recalculate total amount
-    fn recalculate_total(&mut self) {
-        // TODO: Proper big number handling
-        let total: u128 = self
-            .payments
-            .iter()
-            .filter_map(|p| p.amount.parse::<u128>().ok())
-            .sum();
+    fn recalculate_total(&mut self) -> Result<(), String> {
+        // Simple string addition for now - in production use bigdecimal
+        let mut total: u128 = 0;
+        for payment in &self.payments {
+            match payment.amount.parse::<u128>() {
+                Ok(amount) => {
+                    total = total
+                        .checked_add(amount)
+                        .ok_or_else(|| "Total amount overflow".to_string())?;
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "Failed to parse payment amount: {}",
+                        payment.amount
+                    ));
+                }
+            }
+        }
         self.total_amount = total.to_string();
+        Ok(())
     }
 }

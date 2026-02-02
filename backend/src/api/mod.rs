@@ -4,6 +4,7 @@ use axum::Json;
 use serde::Serialize;
 
 pub mod ens;
+pub mod error;
 pub mod quote;
 pub mod session;
 

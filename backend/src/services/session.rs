@@ -4,13 +4,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::models::session::{Session, Payment, SessionStatus};
+use crate::models::session::{Payment, Session, SessionStatus};
 
 /// Session store (in-memory for hackathon)
+#[allow(dead_code)]
 pub struct SessionStore {
     sessions: Arc<RwLock<HashMap<String, Session>>>,
 }
 
+#[allow(dead_code)]
 impl SessionStore {
     /// Create a new session store
     pub fn new() -> Self {
@@ -37,8 +39,9 @@ impl SessionStore {
     pub async fn add_payment(&self, session_id: &str, payment: Payment) -> Option<Session> {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
-            session.add_payment(payment);
-            return Some(session.clone());
+            if session.add_payment(payment).is_ok() {
+                return Some(session.clone());
+            }
         }
         None
     }
@@ -61,10 +64,12 @@ impl Default for SessionStore {
 }
 
 /// Session service
+#[allow(dead_code)]
 pub struct SessionService {
     store: SessionStore,
 }
 
+#[allow(dead_code)]
 impl SessionService {
     /// Create a new session service
     pub fn new() -> Self {

@@ -12,7 +12,10 @@ mod models;
 mod services;
 mod utils;
 
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -47,18 +50,48 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Create the application router
+/// Create the application router with all API routes
 fn create_app() -> Router {
-    // CORS configuration
+    // CORS configuration - allow all origins for development
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Build router with all routes
     Router::new()
         // Health check
         .route("/health", get(api::health_check))
+        // ENS routes
+        .route("/api/ens/resolve", get(api::ens::resolve_ens))
+        .route("/api/ens/lookup", get(api::ens::lookup_address))
+        // Session routes
+        .route("/api/session", post(api::session::create_session))
+        .route("/api/session/:id", get(api::session::get_session))
+        .route("/api/session/:id/payment", post(api::session::add_payment))
+        .route(
+            "/api/session/:id/finalize",
+            post(api::session::finalize_session),
+        )
+        // Quote routes
+        .route("/api/quote", get(api::quote::get_quote))
         // Middleware
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use axum_test::TestServer;
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let app = create_app();
+        let server = TestServer::new(app).unwrap();
+
+        let response = server.get("/health").await;
+        assert_eq!(response.status_code(), StatusCode::OK);
+    }
 }
