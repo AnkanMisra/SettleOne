@@ -1,7 +1,7 @@
 //! LI.FI cross-chain quote service
 
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
+#![allow(dead_code)]
+
 use thiserror::Error;
 
 use crate::api::quote::QuoteRequest;

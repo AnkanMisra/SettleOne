@@ -1,5 +1,7 @@
 //! Utility functions
 
+#![allow(dead_code)]
+
 /// Format an Ethereum address for display
 pub fn format_address(address: &str, chars: usize) -> String {
     if address.len() < chars * 2 + 2 {

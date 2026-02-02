@@ -1,5 +1,7 @@
 //! Application configuration
 
+#![allow(dead_code)]
+
 use serde::Deserialize;
 
 /// Application configuration

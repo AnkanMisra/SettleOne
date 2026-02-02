@@ -1,5 +1,8 @@
 //! Session management API handlers
 
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 use axum::{
     extract::{Path, State},
     Json,

@@ -1,6 +1,7 @@
 //! ENS resolution service
 
-use anyhow::Result;
+#![allow(dead_code)]
+
 use thiserror::Error;
 
 /// ENS resolution errors
