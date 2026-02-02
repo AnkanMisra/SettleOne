@@ -1,12 +1,17 @@
 # Dependabot configuration for SettleOnce
 # Keeps all dependencies up to date across all package ecosystems
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# NOTE: This project uses pnpm as the package manager.
+# Dependabot's "npm" ecosystem works with pnpm - it automatically detects
+# pnpm-lock.yaml files and uses pnpm for updates.
+# See: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file#package-ecosystem
 
 version: 2
 
 updates:
-  # Frontend - Next.js/React (npm)
-  - package-ecosystem: "npm"
+  # Frontend - Next.js/React (pnpm - uses "npm" ecosystem which supports pnpm)
+  - package-ecosystem: "npm" # Works with pnpm-lock.yaml
     directory: "/frontend"
     schedule:
       interval: "weekly"
@@ -53,8 +58,8 @@ updates:
           - "@tailwindcss/*"
           - "postcss*"
 
-  # Smart Contracts - Hardhat/Solidity (npm)
-  - package-ecosystem: "npm"
+  # Smart Contracts - Hardhat/Solidity (pnpm - uses "npm" ecosystem which supports pnpm)
+  - package-ecosystem: "npm" # Works with pnpm-lock.yaml
     directory: "/contracts"
     schedule:
       interval: "weekly"
