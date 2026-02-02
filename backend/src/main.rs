@@ -67,10 +67,10 @@ fn create_app() -> Router {
         .route("/api/ens/lookup", get(api::ens::lookup_address))
         // Session routes
         .route("/api/session", post(api::session::create_session))
-        .route("/api/session/{id}", get(api::session::get_session))
-        .route("/api/session/{id}/payment", post(api::session::add_payment))
+        .route("/api/session/:id", get(api::session::get_session))
+        .route("/api/session/:id/payment", post(api::session::add_payment))
         .route(
-            "/api/session/{id}/finalize",
+            "/api/session/:id/finalize",
             post(api::session::finalize_session),
         )
         // Quote routes
