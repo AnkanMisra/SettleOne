@@ -48,15 +48,13 @@ impl LifiService {
     pub async fn get_quote(&self, params: &QuoteRequest) -> Result<QuoteResult, LifiError> {
         let client = reqwest::Client::new();
 
-        let mut request = client
-            .get(format!("{}/quote", self.api_url))
-            .query(&[
-                ("fromChain", &params.from_chain),
-                ("toChain", &params.to_chain),
-                ("fromToken", &params.from_token),
-                ("toToken", &params.to_token),
-                ("fromAmount", &params.from_amount),
-            ]);
+        let mut request = client.get(format!("{}/quote", self.api_url)).query(&[
+            ("fromChain", &params.from_chain),
+            ("toChain", &params.to_chain),
+            ("fromToken", &params.from_token),
+            ("toToken", &params.to_token),
+            ("fromAmount", &params.from_amount),
+        ]);
 
         if let Some(ref from_address) = params.from_address {
             request = request.query(&[("fromAddress", from_address)]);
@@ -94,9 +92,7 @@ impl LifiService {
             .unwrap_or("0")
             .to_string();
 
-        let estimated_time = data["estimate"]["executionDuration"]
-            .as_u64()
-            .unwrap_or(0);
+        let estimated_time = data["estimate"]["executionDuration"].as_u64().unwrap_or(0);
 
         Ok(QuoteResult {
             to_amount,

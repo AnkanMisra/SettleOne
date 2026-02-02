@@ -30,8 +30,8 @@ pub struct EnsService {
 impl EnsService {
     /// Create a new ENS service
     pub fn new() -> Self {
-        let rpc_url = std::env::var("ETH_RPC_URL")
-            .unwrap_or_else(|_| "https://eth.llamarpc.com".to_string());
+        let rpc_url =
+            std::env::var("ETH_RPC_URL").unwrap_or_else(|_| "https://eth.llamarpc.com".to_string());
 
         Self { rpc_url }
     }

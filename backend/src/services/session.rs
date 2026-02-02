@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::models::session::{Session, Payment, SessionStatus};
+use crate::models::session::{Payment, Session, SessionStatus};
 
 /// Session store (in-memory for hackathon)
 pub struct SessionStore {
