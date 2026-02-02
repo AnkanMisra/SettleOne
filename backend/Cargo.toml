@@ -1,0 +1,50 @@
+[package]
+name = "settleone-backend"
+version = "0.1.0"
+edition = "2021"
+description = "SettleOne backend API for session-based USDC payments"
+authors = ["SettleOne Team"]
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async utilities
+futures = "0.3"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Environment
+dotenvy = "0.15"
+
+# HTTP client (for LI.FI API)
+reqwest = { version = "0.11", features = ["json"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID for session IDs
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# TODO: Add alloy for Web3 interactions when stable
+# alloy = { version = "0.1", features = ["full"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
