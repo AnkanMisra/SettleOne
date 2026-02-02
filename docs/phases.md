@@ -1,7 +1,7 @@
 # SettleOne - Project Phases & Status Report
 
 **Last Updated**: February 2, 2026  
-**Overall Completion**: ~55%  
+**Overall Completion**: ~60%  
 **ETHGlobal HackMoney 2026**
 
 ---
@@ -59,7 +59,7 @@ SettleOne is a cross-chain, identity-powered, gasless USDC payment platform. The
 │                                                                  │
 │  Smart Contracts    [██████████████████░░]  90%  ✓ Tests Pass   │
 │  Frontend           [█████████████░░░░░░░]  65%  ✓ Builds       │
-│  Backend            [███████░░░░░░░░░░░░░]  35%  ⚠ Routes!      │
+│  Backend            [██████████░░░░░░░░░░]  50%  ✓ Routes Wired │
 │  SDK Integration    [██░░░░░░░░░░░░░░░░░░]  10%  ✗ Yellow SDK   │
 │  Testing & QA       [████████░░░░░░░░░░░░]  40%  ~ Partial      │
 │  Documentation      [██████████████░░░░░░]  70%  ~ In Progress  │
@@ -404,9 +404,9 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 
 ## Phase 3: Backend API Server
 
-**Status**: 35% Complete  
+**Status**: 50% Complete  
 **Location**: `/backend/`  
-**Build**: `cargo check` - Compiles with warnings  
+**Build**: `cargo check` - Compiles successfully  
 **Framework**: Axum 0.7 + Tokio
 
 ### What's Done
@@ -414,12 +414,13 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 #### 3.1 Project Structure
 ```
 backend/src/
-├── main.rs           # Entry point
+├── main.rs           # Entry point (Router + Middleware)
 ├── api/              # HTTP handlers
 │   ├── mod.rs        # Exports + health check
 │   ├── ens.rs        # ENS endpoints
 │   ├── session.rs    # Session endpoints
-│   └── quote.rs      # LI.FI quote endpoint
+│   ├── quote.rs      # LI.FI quote endpoint
+│   └── error.rs      # Error handling (AppError)
 ├── services/         # Business logic
 │   ├── mod.rs        # Exports
 │   ├── ens.rs        # ENS resolution
@@ -462,36 +463,33 @@ dotenvy = "0.15"
 - [x] CORS configured (allow any origin)
 - [x] Port configurable via `PORT` env var (default: 3001)
 - [x] TCP listener with graceful startup
+- [x] **API Routes Wired up** (ENS, Session, Quote)
 
 #### 3.4 Health Endpoint
 **File**: `backend/src/api/mod.rs`
 
 - [x] `GET /health` - Returns status and version
-- [x] **This is the ONLY route actually mounted**
 
-#### 3.5 ENS Handlers (NOT MOUNTED)
+#### 3.5 ENS Handlers
 **File**: `backend/src/api/ens.rs`
 
-- [x] `resolve_ens(Query<ResolveQuery>)` handler defined
-- [x] `lookup_address(Query<LookupQuery>)` handler defined
-- [ ] **Routes not mounted in main.rs**
+- [x] `resolve_ens(Query<ResolveQuery>)` handler defined & wired
+- [x] `lookup_address(Query<LookupQuery>)` handler defined & wired
 
-#### 3.6 Session Handlers (NOT MOUNTED)
+#### 3.6 Session Handlers
 **File**: `backend/src/api/session.rs`
 
-- [x] `create_session(Json<CreateSessionRequest>)` handler defined
-- [x] `get_session(Path<String>)` handler defined
-- [x] `add_payment(Path<String>, Json<AddPaymentRequest>)` handler defined
-- [x] `finalize_session(Path<String>)` handler defined
-- [ ] **Routes not mounted in main.rs**
-- [ ] **Handlers return stubs, don't use SessionService**
+- [x] `create_session(Json<CreateSessionRequest>)` handler defined & wired
+- [x] `get_session(Path<String>)` handler defined & wired
+- [x] `add_payment(Path<String>, Json<AddPaymentRequest>)` handler defined & wired
+- [x] `finalize_session(Path<String>)` handler defined & wired
+- [x] Returns `Result<Json<T>, AppError>` for proper error handling
 
-#### 3.7 Quote Handler (NOT MOUNTED)
+#### 3.7 Quote Handler
 **File**: `backend/src/api/quote.rs`
 
-- [x] `get_quote(Query<QuoteQuery>)` handler defined
+- [x] `get_quote(Query<QuoteQuery>)` handler defined & wired
 - [x] Calls LifiService
-- [ ] **Route not mounted in main.rs**
 
 #### 3.8 Session Service
 **File**: `backend/src/services/session.rs`
@@ -502,7 +500,6 @@ dotenvy = "0.15"
 - [x] `SessionStore::add_payment()` - Add payment to session
 - [x] `SessionStore::update_status()` - Update session status
 - [x] `SessionService` wrapper struct
-- [ ] **Not used by handlers** (handlers create stubs)
 
 #### 3.9 Session Models
 **File**: `backend/src/models/session.rs`
@@ -513,7 +510,7 @@ dotenvy = "0.15"
 - [x] `PaymentStatus` enum: Pending, Confirmed, Settled
 - [x] `Session::new()` constructor
 - [x] `Session::add_payment()` method
-- [x] `Session::recalculate_total()` method
+- [x] `Session::recalculate_total()` method (Safe arithmetic)
 
 #### 3.10 LI.FI Service
 **File**: `backend/src/services/lifi.rs`
@@ -522,7 +519,7 @@ dotenvy = "0.15"
 - [x] `get_quote(params)` - **Actually calls LI.FI API**
 - [x] `QuoteRequest` and `QuoteResult` types
 - [x] `LifiError` enum for error handling
-- [x] **This is the most complete service**
+- [x] Safe JSON array access handling
 
 #### 3.11 Utility Functions
 **File**: `backend/src/utils/mod.rs`
@@ -534,46 +531,18 @@ dotenvy = "0.15"
 
 ### What's NOT Done
 
-#### 3.12 Route Mounting (CRITICAL)
-**File**: `backend/src/main.rs:51-64`
-
-```rust
-// CURRENT STATE - Only health is mounted!
-fn create_app() -> Router {
-    Router::new()
-        .route("/health", get(api::health_check))
-        .layer(TraceLayer::new_for_http())
-        .layer(cors)
-}
-```
-
-**MISSING ROUTES**:
-```rust
-// These routes need to be added:
-.route("/api/ens/resolve", get(api::ens::resolve_ens))
-.route("/api/ens/lookup", get(api::ens::lookup_address))
-.route("/api/session", post(api::session::create_session))
-.route("/api/session/:id", get(api::session::get_session))
-.route("/api/session/:id/payment", post(api::session::add_payment))
-.route("/api/session/:id/finalize", post(api::session::finalize_session))
-.route("/api/quote", get(api::quote::get_quote))
-```
-
-#### 3.13 Shared State (CRITICAL)
+#### 3.12 Shared State
 - [ ] **Add `AppState` with `Arc<SessionStore>`**
 - [ ] **Pass state to handlers via Axum's `State` extractor**
 - [ ] **Initialize services once, not per-request**
 
-#### 3.14 Real ENS Resolution
+#### 3.13 Real ENS Resolution
 **File**: `backend/src/services/ens.rs:40-56`
 
 ```rust
-// CURRENT STATE - Only hardcoded!
+// CURRENT STATE - Only hardcoded + warning log!
 pub async fn resolve(&self, name: &str) -> Result<EnsResult, EnsError> {
-    match name {
-        "vitalik.eth" => Ok(EnsResult { ... }),
-        _ => Err(EnsError::NotFound(name.to_string())),
-    }
+    // ...
 }
 ```
 
@@ -582,15 +551,15 @@ pub async fn resolve(&self, name: &str) -> Result<EnsResult, EnsError> {
 - [ ] Actual ENS contract calls
 - [ ] Caching layer for resolved names
 
-#### 3.15 Handler-Service Wiring
+#### 3.14 Handler-Service Integration
 **File**: `backend/src/api/session.rs`
 
-- [ ] `create_session` - Should call `SessionService::create_session()`
-- [ ] `get_session` - Should call `SessionStore::get()`
-- [ ] `add_payment` - Should call `SessionStore::add_payment()`
-- [ ] `finalize_session` - Should call smart contract
+- [ ] `create_session` - Should call `SessionService::create_session()` (Currently stubbed)
+- [ ] `get_session` - Should call `SessionStore::get()` (Currently stubbed)
+- [ ] `add_payment` - Should call `SessionStore::add_payment()` (Currently returns NotImplemented)
+- [ ] `finalize_session` - Should call smart contract (Currently returns NotImplemented)
 
-#### 3.16 Smart Contract Integration
+#### 3.15 Smart Contract Integration
 - [ ] **Add ethers-rs or alloy for contract calls**
 - [ ] **Sign and broadcast transactions**
 - [ ] **Handle transaction receipts**
@@ -905,25 +874,7 @@ YELLOW_API_KEY=             # Not set
 
 ## Critical Blockers
 
-### Blocker 1: Backend Routes Not Mounted
-**Severity**: HIGH  
-**Impact**: Frontend cannot communicate with backend  
-**Fix Time**: 30 minutes
-
-```rust
-// Add to main.rs create_app()
-.route("/api/ens/resolve", get(api::ens::resolve_ens))
-.route("/api/ens/lookup", get(api::ens::lookup_address))
-.route("/api/session", post(api::session::create_session))
-.route("/api/session/:id", get(api::session::get_session))
-.route("/api/session/:id/payment", post(api::session::add_payment))
-.route("/api/session/:id/finalize", post(api::session::finalize_session))
-.route("/api/quote", get(api::quote::get_quote))
-```
-
----
-
-### Blocker 2: Yellow SDK Missing
+### Blocker 1: Yellow SDK Missing
 **Severity**: HIGH  
 **Impact**: Cannot qualify for Yellow Network sponsor track  
 **Fix Time**: 3-4 hours
@@ -936,7 +887,7 @@ YELLOW_API_KEY=             # Not set
 
 ---
 
-### Blocker 3: No On-Chain Transactions
+### Blocker 2: No On-Chain Transactions
 **Severity**: HIGH  
 **Impact**: Users cannot actually settle payments  
 **Fix Time**: 2-3 hours
@@ -949,7 +900,7 @@ YELLOW_API_KEY=             # Not set
 
 ---
 
-### Blocker 4: Contracts Not Deployed
+### Blocker 3: Contracts Not Deployed
 **Severity**: MEDIUM  
 **Impact**: Nothing to interact with on-chain  
 **Fix Time**: 30 minutes
@@ -966,7 +917,6 @@ YELLOW_API_KEY=             # Not set
 
 | Task | Time | Impact | Priority |
 |------|------|--------|----------|
-| Wire up backend routes | 30 min | Backend functional | P0 |
 | Deploy to Sepolia | 15 min | Testable contracts | P0 |
 | Add proper README | 20 min | Better presentation | P1 |
 | Display LI.FI quotes | 1 hour | Sponsor requirement | P1 |
