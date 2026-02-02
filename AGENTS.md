@@ -22,6 +22,15 @@ Guidelines for AI coding agents working on this cross-chain USDC payment platfor
 - Report test failures or build errors immediately
 - Summarize changes made after completing tasks
 
+### New Projects/Folders
+- **Always include GitHub Actions workflows** for any new project or folder
+- Every new component must have:
+  - A CI workflow in `.github/workflows/` for linting, building, and testing
+  - Proper test files (unit tests at minimum)
+  - A `README.md` or section in docs explaining the component
+- Use path filters in workflows to only run when relevant files change
+- Follow existing workflow patterns in this repo as templates
+
 ---
 
 ## Project Overview
