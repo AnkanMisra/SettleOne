@@ -973,7 +973,8 @@ backend/
     │   ├── mod.rs
     │   ├── ens.rs
     │   ├── session.rs
-    │   └── quote.rs
+    │   ├── quote.rs
+    │   └── error.rs
     ├── services/
     │   ├── mod.rs
     │   ├── ens.rs
