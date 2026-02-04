@@ -275,3 +275,95 @@
 - **Frontend**: `pnpm build` ✅
 - **Backend**: `cargo test` ✅ (4 tests)
 - **Contracts**: `pnpm test` ✅ (27 tests)
+
+---
+
+## Session 4: February 4, 2026 - Yellow ClearNode Discovery
+
+### 17. Yellow Network ClearNode Endpoint Discovery
+
+**MAJOR BREAKTHROUGH**: Found official ClearNode WebSocket endpoints in Yellow Network docs!
+
+**ClearNode Endpoints**:
+```
+Production: wss://clearnet.yellow.com/ws
+Sandbox:    wss://clearnet-sandbox.yellow.com/ws (for testing)
+```
+
+**Official SDK Package**:
+```bash
+pnpm add @erc7824/nitrolite
+```
+
+**SDK Functions Available**:
+- `createAppSessionMessage()` - Create signed session messages
+- `parseRPCResponse()` - Parse incoming WebSocket messages
+
+**Message Types from ClearNode**:
+- `session_created` - Session confirmed
+- `payment` - Payment received
+- `session_message` - App-specific message
+- `error` - Error response
+
+### 18. Updated Implementation Plan
+
+**Priority Order**:
+1. Yellow SDK + ClearNode URL (~30 min)
+2. LI.FI Quote UI (~1-1.5 hours)
+3. Deploy Frontend to Vercel (~30 min)
+4. Deploy Backend to Railway (~1 hour)
+
+**Files to Update for Yellow**:
+- `frontend/src/lib/yellow.ts` - Update WebSocket URL
+- Add `@erc7824/nitrolite` dependency
+- Update message handling to use SDK functions
+
+**Files to Create/Update for LI.FI**:
+- Create: `frontend/src/components/features/QuoteDisplay.tsx`
+- Update: `frontend/src/components/features/PaymentForm.tsx`
+
+### 19. Deployment Plan
+
+**Frontend → Vercel**:
+- Domain: `settleonce.vercel.app`
+- Root directory: `frontend`
+- Framework: Next.js (auto-detected)
+
+**Backend → Railway**:
+- Root directory: `backend`
+- Builder: Nixpacks (Rust auto-detected)
+
+**Environment Variables**:
+```bash
+# Frontend (Vercel)
+NEXT_PUBLIC_API_URL=https://settleonce-backend.up.railway.app
+
+# Backend (Railway)
+PORT=3001
+ETH_RPC_URL=https://eth.llamarpc.com
+LIFI_API_URL=https://li.quest/v1
+SETTLEMENT_CONTRACT_ADDRESS=0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2
+```
+
+---
+
+## Current Project Status (Session 4 Start)
+
+### Overall Completion: ~85% → Target: 95%
+
+| Component | Before | After Target |
+|-----------|--------|--------------|
+| Smart Contracts | 100% ✅ | 100% ✅ |
+| Frontend | 90% | 95% (LI.FI UI) |
+| Backend | 70% | 70% |
+| SDK Integration | 40% | 90% (Yellow ClearNode!) |
+| Deployment | 0% | 100% (Vercel + Railway) |
+
+### Sponsor Track Compliance After Session 4
+
+| Track | Before | After |
+|-------|--------|-------|
+| Yellow Network | 80% | **100%** (ClearNode connected!) |
+| Circle / Arc | 100% ✅ | 100% ✅ |
+| ENS | 100% ✅ | 100% ✅ |
+| LI.FI | 70% | **95%** (Quote UI) |

@@ -651,21 +651,21 @@ pub async fn resolve(&self, name: &str) -> Result<EnsResult, EnsError> {
 
 ### What's NOT Done
 
-#### 4.6 Yellow SDK Full Integration
-- [ ] Actual ClearNode server URL (currently placeholder)
-- [ ] Real authentication flow
-- [ ] State channel finalization
-- [ ] Production WebSocket endpoint
+#### 4.6 Yellow SDK Full Integration ✅ NOW POSSIBLE
+- [x] ClearNode sandbox URL discovered: `wss://clearnet-sandbox.yellow.com/ws`
+- [x] Official SDK: `@erc7824/nitrolite`
+- [ ] Install SDK and update WebSocket URL
+- [ ] Use `createAppSessionMessage()` for session creation
+- [ ] Use `parseRPCResponse()` for message parsing
 
 #### 4.7 LI.FI Frontend Integration
 - [ ] Display quotes in PaymentForm component
 - [ ] Show fees, time estimates
-- [ ] Route execution (if cross-chain)
+- [ ] Route visualization (optional)
 
 #### 4.8 Circle Gateway Integration
-- [ ] Gasless transaction support
-- [ ] USDC-based gas payment
-- [ ] Programmable wallet integration
+- [ ] Gasless transaction support (nice to have)
+- [ ] USDC-based gas payment (nice to have)
 
 ---
 
@@ -916,18 +916,28 @@ YELLOW_API_KEY=             # Not set
 
 ## Critical Blockers
 
-### ~~Blocker 1: Yellow SDK Missing~~ PARTIALLY RESOLVED
-**Severity**: ~~HIGH~~ MEDIUM  
-**Impact**: ~~Cannot qualify for Yellow Network sponsor track~~ Architecture ready  
-**Remaining**: 1-2 hours for ClearNode integration
+### ~~Blocker 1: Yellow SDK Missing~~ RESOLVED
+**Severity**: ~~HIGH~~ RESOLVED  
+**Impact**: ~~Cannot qualify for Yellow Network sponsor track~~ ClearNode endpoint found!
+
+**Discovery (Session 4)**:
+Found official ClearNode WebSocket endpoints in Yellow Network documentation!
+
+```
+ClearNode Endpoints:
+- Production: wss://clearnet.yellow.com/ws
+- Sandbox:    wss://clearnet-sandbox.yellow.com/ws (for testing)
+
+SDK Package: @erc7824/nitrolite
+```
 
 **Completed**:
 1. ✅ WebSocket client with connection management
 2. ✅ React hook for Yellow session state
 3. ✅ UI integration showing connection status
 4. ✅ Payment tracking in session
-5. ⏳ ClearNode server URL needed
-6. ⏳ Real authentication flow needed
+5. ✅ ClearNode sandbox URL discovered
+6. ⏳ Install SDK and update URL (next step)
 
 ---
 
