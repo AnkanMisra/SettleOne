@@ -72,6 +72,7 @@ export class YellowSession {
   private config: YellowSessionConfig;
   private sessionId: string | null = null;
   private isConnected = false;
+  private isManualDisconnect = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private payments: YellowPayment[] = [];
@@ -84,6 +85,9 @@ export class YellowSession {
    * Connect to Yellow Network ClearNode
    */
   async connect(): Promise<void> {
+    // Reset manual disconnect flag when establishing a new connection
+    this.isManualDisconnect = false;
+    
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(CLEARNODE_URL);
@@ -190,6 +194,9 @@ export class YellowSession {
    * Disconnect from ClearNode
    */
   disconnect(): void {
+    // Set flag to prevent automatic reconnection
+    this.isManualDisconnect = true;
+    
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -396,6 +403,12 @@ export class YellowSession {
   }
 
   private attemptReconnect(): void {
+    // Don't reconnect if disconnect was called manually
+    if (this.isManualDisconnect) {
+      console.log('[Yellow] Skipping reconnect - manual disconnect');
+      return;
+    }
+    
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.log('[Yellow] Max reconnection attempts reached');
       return;

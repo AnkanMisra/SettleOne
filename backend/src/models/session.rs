@@ -41,6 +41,7 @@ pub struct Session {
     pub status: SessionStatus,
     pub payments: Vec<Payment>,
     pub total_amount: String,
+    pub tx_hash: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -53,6 +54,7 @@ impl Session {
             status: SessionStatus::Active,
             payments: Vec::new(),
             total_amount: "0".to_string(),
+            tx_hash: None,
             created_at: Utc::now(),
         }
     }

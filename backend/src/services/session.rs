@@ -53,6 +53,22 @@ impl SessionStore {
         }
         None
     }
+
+    /// Finalize session with status and optional tx_hash
+    pub async fn finalize(
+        &self,
+        session_id: &str,
+        status: SessionStatus,
+        tx_hash: Option<String>,
+    ) -> Option<Session> {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            session.status = status;
+            session.tx_hash = tx_hash;
+            return Some(session.clone());
+        }
+        None
+    }
 }
 
 impl Default for SessionStore {

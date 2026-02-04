@@ -137,16 +137,16 @@ pub async fn finalize_session(
 
     use crate::models::session::SessionStatus;
 
-    // Update session status to pending settlement
+    // Update session status and persist tx_hash
     match state
         .session_store
-        .update_status(&id, SessionStatus::Pending)
+        .finalize(&id, SessionStatus::Pending, payload.tx_hash.clone())
         .await
     {
-        Some(_session) => Ok(Json(FinalizeResponse {
+        Some(session) => Ok(Json(FinalizeResponse {
             session_id: id,
             status: "pending".to_string(),
-            tx_hash: payload.tx_hash,
+            tx_hash: session.tx_hash,
         })),
         None => Err(AppError::NotFound(format!("Session {} not found", id))),
     }
