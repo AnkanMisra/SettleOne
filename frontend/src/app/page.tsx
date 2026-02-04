@@ -1,13 +1,13 @@
 'use client';
 
 import { useAccount, useChainId } from 'wagmi';
-import { useState } from 'react';
-import { parseUnits } from 'viem';
+import { useState, useEffect } from 'react';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
 import { PaymentForm } from '@/components/features/PaymentForm';
 import { useSession } from '@/hooks/useSession';
 import { useSettlement } from '@/hooks/useSettlement';
+import { useYellow } from '@/hooks/useYellow';
 import { SESSION_SETTLEMENT_ADDRESSES } from '@/lib/contracts';
 
 type ViewMode = 'home' | 'payment' | 'approving' | 'settling';
@@ -32,13 +32,38 @@ export default function Home() {
     isSettling,
     isPending,
     error: settlementError,
-    txHash,
     approveUSDC,
     settleSessionBatch,
     getContractAddress,
   } = useSettlement();
 
+  // Yellow Network integration for off-chain instant payments
+  const {
+    isConnected: yellowConnected,
+    isConnecting: yellowConnecting,
+    connectionError: yellowError,
+    sessionId: yellowSessionId,
+    payments: yellowPayments,
+    totalSent: yellowTotalSent,
+    connect: connectYellow,
+    sendPayment: sendYellowPayment,
+    getPaymentsForSettlement,
+  } = useYellow();
+
+  // Auto-connect to Yellow when wallet connects
+  useEffect(() => {
+    if (isConnected && !yellowConnected && !yellowConnecting) {
+      // Optional: auto-connect to Yellow Network
+      // connectYellow();
+    }
+  }, [isConnected, yellowConnected, yellowConnecting]);
+
   const handleStartSession = async () => {
+    // Connect to Yellow Network for off-chain payments
+    if (!yellowConnected) {
+      await connectYellow();
+    }
+    
     const sessionId = await createSession();
     if (sessionId) {
       setViewMode('payment');
@@ -52,6 +77,15 @@ export default function Home() {
     fromChainId: number;
     toChainId: number;
   }) => {
+    // Send instant payment via Yellow Network (off-chain)
+    if (yellowConnected && yellowSessionId) {
+      const yellowSuccess = await sendYellowPayment(data.recipient, data.amount);
+      if (!yellowSuccess) {
+        console.warn('[Yellow] Off-chain payment failed, falling back to backend only');
+      }
+    }
+
+    // Also record in backend for persistence
     const success = await addPayment(
       data.recipient,
       data.amount,
@@ -180,6 +214,30 @@ export default function Home() {
             </div>
           ) : session ? (
             <div>
+              {/* Yellow Network Status */}
+              {yellowConnected && (
+                <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                    <span className="text-yellow-400 text-sm font-medium">
+                      Yellow Network: Connected
+                      {yellowSessionId && ` (Session: ${yellowSessionId.slice(0, 8)}...)`}
+                    </span>
+                  </div>
+                  {yellowPayments.length > 0 && (
+                    <div className="mt-2 text-xs text-yellow-400/70">
+                      {yellowPayments.length} off-chain payment(s) | Total: {(Number(yellowTotalSent) / 1e6).toFixed(2)} USDC
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {yellowError && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                  Yellow Network: {yellowError}
+                </div>
+              )}
+
               {/* Settlement Status Banner */}
               {(viewMode === 'approving' || viewMode === 'settling') && (
                 <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
@@ -250,8 +308,8 @@ export default function Home() {
                   <span className="text-sm text-gray-400">How it works</span>
                 </div>
                 <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-                  <li>Start a session to begin batching payments</li>
-                  <li>Add multiple payments to recipients (ENS or address)</li>
+                  <li>Start a session (connects to Yellow Network)</li>
+                  <li>Add payments - instant off-chain via state channels</li>
                   <li>Settle all payments on-chain in one transaction</li>
                 </ol>
               </div>
