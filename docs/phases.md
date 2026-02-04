@@ -180,7 +180,7 @@ SettleOne is a cross-chain, identity-powered, gasless USDC payment platform. The
 - [x] **Deployment info saved** - `contracts/deployments/baseSepolia.json`
 
 **Deployed Contracts**:
-```
+```text
 Network: Base Sepolia (Chain ID: 84532)
 Deployer: 0x699ed028F3E5cD905c46B77bb0D8E8506c9e1082
 

@@ -124,8 +124,9 @@ class ApiClient {
   }
 
   async finalizeSession(sessionId: string): Promise<{
+    session_id: string;
+    status: string;
     tx_hash: string | null;
-    error: string | null;
   }> {
     return this.request(`/api/session/${sessionId}/finalize`, {
       method: 'POST',

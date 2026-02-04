@@ -69,12 +69,15 @@ export function useSettlement(): UseSettlementReturn {
     hash: txHash,
   });
 
-  // Read USDC allowance
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+  // Read USDC allowance - only run query when inputs exist
+  const { refetch: refetchAllowance } = useReadContract({
     address: usdcAddress,
     abi: ERC20_ABI,
     functionName: 'allowance',
     args: address && contractAddress ? [address, contractAddress] : undefined,
+    query: {
+      enabled: Boolean(usdcAddress && address && contractAddress),
+    },
   });
 
   // Get contract address helper
@@ -85,13 +88,13 @@ export function useSettlement(): UseSettlementReturn {
   // Check if we have enough allowance
   const checkAllowance = useCallback(
     async (amount: string): Promise<boolean> => {
-      if (!allowance) {
-        await refetchAllowance();
-      }
+      // Refetch to get the latest allowance value
+      const result = await refetchAllowance();
+      const currentAllowance = result.data ?? BigInt(0);
       const requiredAmount = parseUnits(amount, 6); // USDC has 6 decimals
-      return (allowance as bigint) >= requiredAmount;
+      return currentAllowance >= requiredAmount;
     },
-    [allowance, refetchAllowance]
+    [refetchAllowance]
   );
 
   // Approve USDC spending

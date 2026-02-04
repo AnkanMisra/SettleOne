@@ -103,13 +103,14 @@ export function useSession(): UseSessionReturn {
     try {
       const response = await api.finalizeSession(session.id);
 
-      if (response.error) {
-        setError(response.error);
+      // Backend returns status - check if it's an error status
+      if (response.status === 'error') {
+        setError('Failed to finalize session');
         return null;
       }
 
       // Clear session after finalization
-      if (response.tx_hash) {
+      if (response.status === 'pending') {
         setSession(null);
       }
       return response.tx_hash;

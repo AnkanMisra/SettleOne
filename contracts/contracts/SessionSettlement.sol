@@ -82,17 +82,11 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     ) external nonReentrant {
         _validateSettlement(sessionId, amount, recipient);
 
-        // Check contract has sufficient USDC balance
-        uint256 balance = usdc.balanceOf(address(this));
-        if (balance < amount) {
-            revert SessionErrors.InsufficientBalance(amount, balance);
-        }
-
         // Mark session as settled and deactivate
         _markSettled(sessionId);
 
-        // Transfer USDC to recipient
-        usdc.safeTransfer(recipient, amount);
+        // Transfer USDC from sender to recipient using their approval
+        usdc.safeTransferFrom(msg.sender, recipient, amount);
 
         emit SessionSettled(sessionId, recipient, amount, block.timestamp);
     }
@@ -112,17 +106,11 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
         // Calculate total amount and validate settlements
         uint256 totalAmount = _calculateAndValidateBatch(settlements);
 
-        // Check contract has sufficient balance
-        uint256 balance = usdc.balanceOf(address(this));
-        if (balance < totalAmount) {
-            revert SessionErrors.InsufficientBalance(totalAmount, balance);
-        }
-
         // Mark session as settled
         _markSettled(sessionId);
 
-        // Execute all transfers
-        _executeBatchTransfers(sessionId, settlements);
+        // Execute all transfers from sender's approved balance
+        _executeBatchTransfersFrom(msg.sender, sessionId, settlements);
 
         emit BatchSettled(sessionId, totalAmount, settlements.length);
     }
@@ -219,14 +207,15 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Executes batch transfers and emits events
+     * @dev Executes batch transfers from sender's approved balance and emits events
      */
-    function _executeBatchTransfers(
+    function _executeBatchTransfersFrom(
+        address from,
         bytes32 sessionId,
         Settlement[] calldata settlements
     ) internal {
         for (uint256 i = 0; i < settlements.length; i++) {
-            usdc.safeTransfer(settlements[i].recipient, settlements[i].amount);
+            usdc.safeTransferFrom(from, settlements[i].recipient, settlements[i].amount);
             emit SessionSettled(
                 sessionId,
                 settlements[i].recipient,

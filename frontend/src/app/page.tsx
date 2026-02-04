@@ -1,7 +1,8 @@
 'use client';
 
-import { useAccount, useChainId } from 'wagmi';
 import { useState, useEffect } from 'react';
+import { useAccount, useChainId } from 'wagmi';
+import { parseUnits } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
 import { PaymentForm } from '@/components/features/PaymentForm';
@@ -47,7 +48,6 @@ export default function Home() {
     totalSent: yellowTotalSent,
     connect: connectYellow,
     sendPayment: sendYellowPayment,
-    getPaymentsForSettlement,
   } = useYellow();
 
   // Auto-connect to Yellow when wallet connects
@@ -126,9 +126,10 @@ export default function Home() {
       setViewMode('settling');
 
       // Prepare settlements array from session payments
+      // Use parseUnits to convert string amounts to USDC base units (6 decimals)
       const settlements = session.payments.map((payment) => ({
         recipient: payment.recipient,
-        amount: BigInt(payment.amount),
+        amount: parseUnits(payment.amount, 6),
       }));
 
       const hash = await settleSessionBatch(session.id, settlements);

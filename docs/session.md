@@ -159,6 +159,7 @@
 4. End-to-end testing
 
 ### Deployed Contracts
+
 | Contract | Address | Network |
 |----------|---------|---------|
 | SessionSettlement | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` | Base Sepolia |
