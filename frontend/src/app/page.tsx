@@ -1,17 +1,24 @@
 'use client';
 
-import { useAccount } from 'wagmi';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAccount, useChainId } from 'wagmi';
+import { parseUnits } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
 import { PaymentForm } from '@/components/features/PaymentForm';
 import { useSession } from '@/hooks/useSession';
+import { useSettlement } from '@/hooks/useSettlement';
+import { useYellow } from '@/hooks/useYellow';
+import { SESSION_SETTLEMENT_ADDRESSES } from '@/lib/contracts';
 
-type ViewMode = 'home' | 'payment';
+type ViewMode = 'home' | 'payment' | 'approving' | 'settling';
 
 export default function Home() {
   const { isConnected } = useAccount();
+  const chainId = useChainId();
   const [viewMode, setViewMode] = useState<ViewMode>('home');
+  const [settlementStatus, setSettlementStatus] = useState<string>('');
+  
   const {
     session,
     isLoading,
@@ -21,7 +28,43 @@ export default function Home() {
     finalizeSession,
   } = useSession();
 
+  const {
+    isApproving,
+    isSettling,
+    isPending,
+    error: settlementError,
+    approveUSDC,
+    settleSessionBatch,
+    getContractAddress,
+    checkAllowance,
+  } = useSettlement();
+
+  // Yellow Network integration for off-chain instant payments
+  const {
+    isConnected: yellowConnected,
+    isConnecting: yellowConnecting,
+    connectionError: yellowError,
+    sessionId: yellowSessionId,
+    payments: yellowPayments,
+    totalSent: yellowTotalSent,
+    connect: connectYellow,
+    sendPayment: sendYellowPayment,
+  } = useYellow();
+
+  // Auto-connect to Yellow when wallet connects
+  useEffect(() => {
+    if (isConnected && !yellowConnected && !yellowConnecting) {
+      // Optional: auto-connect to Yellow Network
+      // connectYellow();
+    }
+  }, [isConnected, yellowConnected, yellowConnecting]);
+
   const handleStartSession = async () => {
+    // Connect to Yellow Network for off-chain payments
+    if (!yellowConnected) {
+      await connectYellow();
+    }
+    
     const sessionId = await createSession();
     if (sessionId) {
       setViewMode('payment');
@@ -35,6 +78,15 @@ export default function Home() {
     fromChainId: number;
     toChainId: number;
   }) => {
+    // Send instant payment via Yellow Network (off-chain)
+    if (yellowConnected && yellowSessionId) {
+      const yellowSuccess = await sendYellowPayment(data.recipient, data.amount);
+      if (!yellowSuccess) {
+        console.warn('[Yellow] Off-chain payment failed, falling back to backend only');
+      }
+    }
+
+    // Also record in backend for persistence
     const success = await addPayment(
       data.recipient,
       data.amount,
@@ -46,10 +98,65 @@ export default function Home() {
   };
 
   const handleFinalize = async () => {
-    const txHash = await finalizeSession();
-    if (txHash) {
-      // Show success notification
-      alert(`Settlement complete! TX: ${txHash}`);
+    if (!session || session.payments.length === 0) {
+      return;
+    }
+
+    const contractAddress = getContractAddress();
+    if (!contractAddress) {
+      alert(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
+      return;
+    }
+
+    try {
+      // Step 1: Calculate total amount needed
+      const totalAmount = session.total_amount;
+      setSettlementStatus('Checking USDC approval...');
+      setViewMode('approving');
+
+      // Step 2: Check allowance and approve USDC if needed
+      const hasAllowance = await checkAllowance(totalAmount);
+      if (!hasAllowance) {
+        setSettlementStatus('Approving USDC...');
+        const approved = await approveUSDC(totalAmount);
+        if (!approved) {
+          setSettlementStatus('USDC approval failed');
+          setViewMode('home');
+          return;
+        }
+      }
+
+      // Step 3: Execute on-chain settlement
+      setSettlementStatus('Settling on-chain...');
+      setViewMode('settling');
+
+      // Prepare settlements array from session payments
+      // Use parseUnits to convert string amounts to USDC base units (6 decimals)
+      const settlements = session.payments.map((payment) => ({
+        recipient: payment.recipient,
+        amount: parseUnits(payment.amount, 6),
+      }));
+
+      const hash = await settleSessionBatch(session.id, settlements);
+
+      if (hash) {
+        // Step 4: Update backend with tx_hash
+        await finalizeSession(hash);
+        
+        setSettlementStatus('');
+        setViewMode('home');
+        
+        // Show success with block explorer link
+        const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`;
+        alert(`Settlement complete!\n\nTransaction: ${hash.slice(0, 10)}...${hash.slice(-8)}\n\nView on explorer: ${explorerUrl}`);
+      } else {
+        setSettlementStatus('Settlement failed');
+        setViewMode('home');
+      }
+    } catch (err) {
+      console.error('Settlement error:', err);
+      setSettlementStatus('');
+      setViewMode('home');
     }
   };
 
@@ -112,12 +219,64 @@ export default function Home() {
               />
             </div>
           ) : session ? (
-            <SessionCard
-              session={session}
-              onAddPayment={() => setViewMode('payment')}
-              onFinalize={handleFinalize}
-              isLoading={isLoading}
-            />
+            <div>
+              {/* Yellow Network Status */}
+              {yellowConnected && (
+                <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                    <span className="text-yellow-400 text-sm font-medium">
+                      Yellow Network: Connected
+                      {yellowSessionId && ` (Session: ${yellowSessionId.slice(0, 8)}...)`}
+                    </span>
+                  </div>
+                  {yellowPayments.length > 0 && (
+                    <div className="mt-2 text-xs text-yellow-400/70">
+                      {yellowPayments.length} off-chain payment(s) | Total: {(Number(yellowTotalSent) / 1e6).toFixed(2)} USDC
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {yellowError && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                  Yellow Network: {yellowError}
+                </div>
+              )}
+
+              {/* Settlement Status Banner */}
+              {(viewMode === 'approving' || viewMode === 'settling') && (
+                <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-blue-400 text-sm font-medium">
+                      {settlementStatus || 'Processing...'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Settlement Error Banner */}
+              {settlementError && (
+                <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                  {settlementError}
+                </div>
+              )}
+
+              {/* Contract Warning */}
+              {!SESSION_SETTLEMENT_ADDRESSES[chainId] && (
+                <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-400 text-sm">
+                  Contract not deployed on this network. Please switch to Base Sepolia (Chain ID: 84532).
+                </div>
+              )}
+
+              <SessionCard
+                session={session}
+                onAddPayment={() => setViewMode('payment')}
+                onFinalize={handleFinalize}
+                isLoading={isLoading || isApproving || isSettling || isPending}
+              />
+            </div>
           ) : (
             <div className="space-y-6">
               {/* No session yet - show start button */}
@@ -155,8 +314,8 @@ export default function Home() {
                   <span className="text-sm text-gray-400">How it works</span>
                 </div>
                 <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-                  <li>Start a session to begin batching payments</li>
-                  <li>Add multiple payments to recipients (ENS or address)</li>
+                  <li>Start a session (connects to Yellow Network)</li>
+                  <li>Add payments - instant off-chain via state channels</li>
                   <li>Settle all payments on-chain in one transaction</li>
                 </ol>
               </div>

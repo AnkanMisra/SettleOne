@@ -23,7 +23,13 @@ describe("SessionSettlement", function () {
       await ethers.getContractFactory("SessionSettlement");
     const settlement = await SessionSettlement.deploy(await usdc.getAddress());
 
-    // Mint USDC to settlement contract for payouts
+    // Mint USDC to owner for settlements (new approach: sender approves and transfers)
+    await usdc.mint(owner.address, INITIAL_USDC_SUPPLY);
+    
+    // Approve the settlement contract to spend owner's USDC
+    await usdc.approve(await settlement.getAddress(), INITIAL_USDC_SUPPLY);
+
+    // Also mint some USDC to the contract for emergencyWithdraw tests
     await usdc.mint(await settlement.getAddress(), INITIAL_USDC_SUPPLY);
 
     return { settlement, usdc, owner, user1, user2, recipient1, recipient2 };
@@ -108,7 +114,7 @@ describe("SessionSettlement", function () {
   describe("Single Settlement", function () {
     describe("finalizeSession", function () {
       it("should finalize a session and transfer USDC", async function () {
-        const { settlement, usdc, user1, recipient1 } = await loadFixture(
+        const { settlement, usdc, owner, user1, recipient1 } = await loadFixture(
           deployContractsFixture,
         );
         const sessionId = generateSessionId(user1.address, 1);
@@ -120,9 +126,9 @@ describe("SessionSettlement", function () {
         const initialRecipientBalance = await usdc.balanceOf(
           recipient1.address,
         );
-        const initialContractBalance = await settlement.getBalance();
+        const initialOwnerBalance = await usdc.balanceOf(owner.address);
 
-        // Finalize session
+        // Finalize session (transfers from msg.sender via safeTransferFrom)
         await expect(
           settlement.finalizeSession(
             sessionId,
@@ -138,12 +144,12 @@ describe("SessionSettlement", function () {
             (timestamp: bigint) => timestamp > 0n,
           );
 
-        // Check balances after
+        // Check balances after - USDC transferred from owner to recipient
         expect(await usdc.balanceOf(recipient1.address)).to.equal(
           initialRecipientBalance + SETTLEMENT_AMOUNT,
         );
-        expect(await settlement.getBalance()).to.equal(
-          initialContractBalance - SETTLEMENT_AMOUNT,
+        expect(await usdc.balanceOf(owner.address)).to.equal(
+          initialOwnerBalance - SETTLEMENT_AMOUNT,
         );
 
         // Check session is marked as settled
@@ -222,22 +228,23 @@ describe("SessionSettlement", function () {
         ).to.be.revertedWithCustomError(settlement, "InvalidAmount");
       });
 
-      it("should revert with insufficient balance", async function () {
+      it("should revert with insufficient sender allowance", async function () {
         const { settlement, user1, recipient1 } = await loadFixture(
           deployContractsFixture,
         );
         const sessionId = generateSessionId(user1.address, 1);
+        
+        // Try to settle more than the owner has approved
         const excessiveAmount = INITIAL_USDC_SUPPLY + 1n;
 
+        // This will revert with our custom InsufficientAllowance error
         await expect(
           settlement.finalizeSession(
             sessionId,
             excessiveAmount,
             recipient1.address,
           ),
-        )
-          .to.be.revertedWithCustomError(settlement, "InsufficientBalance")
-          .withArgs(excessiveAmount, INITIAL_USDC_SUPPLY);
+        ).to.be.revertedWithCustomError(settlement, "InsufficientAllowance");
       });
     });
   });
@@ -353,7 +360,7 @@ describe("SessionSettlement", function () {
         ).to.be.revertedWithCustomError(settlement, "InvalidAmount");
       });
 
-      it("should revert with insufficient balance for batch", async function () {
+      it("should revert with insufficient sender allowance for batch", async function () {
         const { settlement, user1, recipient1 } = await loadFixture(
           deployContractsFixture,
         );
@@ -364,9 +371,48 @@ describe("SessionSettlement", function () {
           { recipient: recipient1.address, amount: 1n },
         ];
 
+        // This will revert with our custom InsufficientAllowance error
         await expect(
           settlement.finalizeSessionBatch(sessionId, settlements),
-        ).to.be.revertedWithCustomError(settlement, "InsufficientBalance");
+        ).to.be.revertedWithCustomError(settlement, "InsufficientAllowance");
+      });
+
+      it("should revert when batch exceeds MAX_BATCH_SIZE", async function () {
+        const { settlement, user1, recipient1 } = await loadFixture(
+          deployContractsFixture,
+        );
+        const sessionId = generateSessionId(user1.address, 1);
+
+        // Create a batch with 101 settlements (MAX_BATCH_SIZE is 100)
+        const settlements = Array.from({ length: 101 }, () => ({
+          recipient: recipient1.address,
+          amount: ethers.parseUnits("1", 6),
+        }));
+
+        await expect(
+          settlement.finalizeSessionBatch(sessionId, settlements),
+        )
+          .to.be.revertedWithCustomError(settlement, "BatchTooLarge")
+          .withArgs(101, 100);
+      });
+
+      it("should revert when batch total amount would overflow", async function () {
+        const { settlement, user1, recipient1 } = await loadFixture(
+          deployContractsFixture,
+        );
+        const sessionId = generateSessionId(user1.address, 1);
+
+        // Use max uint256 value to trigger overflow on second addition
+        const maxUint256 = 2n ** 256n - 1n;
+        const settlements = [
+          { recipient: recipient1.address, amount: maxUint256 },
+          { recipient: recipient1.address, amount: 1n },
+        ];
+
+        // This should revert with BatchAmountOverflow due to our overflow protection
+        await expect(
+          settlement.finalizeSessionBatch(sessionId, settlements),
+        ).to.be.revertedWithCustomError(settlement, "BatchAmountOverflow");
       });
     });
   });

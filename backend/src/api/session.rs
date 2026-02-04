@@ -1,11 +1,15 @@
 //! Session management API handlers
 
-use axum::{extract::Path, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::error::AppError;
-use crate::models::session::{Session, SessionStatus};
+use crate::models::session::{Payment, PaymentStatus, Session};
+use crate::AppState;
 
 /// Create session request
 #[derive(Deserialize)]
@@ -36,42 +40,45 @@ pub struct SessionResponse {
 
 /// Create a new session
 pub async fn create_session(
+    State(state): State<AppState>,
     Json(payload): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, AppError> {
     let session_id = Uuid::new_v4().to_string();
 
-    // TODO: Integrate with Yellow SDK
+    // Create session in the store
+    let session = state
+        .session_store
+        .create(session_id.clone(), payload.user_address.clone())
+        .await;
+
     tracing::info!(
-        "Creating session {} for user {}",
-        session_id,
+        "Created session {} for user {}",
+        session.id,
         payload.user_address
     );
 
     Ok(Json(CreateSessionResponse {
-        session_id,
+        session_id: session.id,
         status: "active".to_string(),
     }))
 }
 
 /// Get session by ID
-pub async fn get_session(Path(id): Path<String>) -> Result<Json<SessionResponse>, AppError> {
-    // TODO: Fetch from session store
+pub async fn get_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<SessionResponse>, AppError> {
     tracing::info!("Getting session {}", id);
 
-    Ok(Json(SessionResponse {
-        session: Session {
-            id: id.clone(),
-            user: "0x...".to_string(),
-            status: SessionStatus::Active,
-            payments: vec![],
-            total_amount: "0".to_string(),
-            created_at: chrono::Utc::now(),
-        },
-    }))
+    match state.session_store.get(&id).await {
+        Some(session) => Ok(Json(SessionResponse { session })),
+        None => Err(AppError::NotFound(format!("Session {} not found", id))),
+    }
 }
 
 /// Add payment to session
 pub async fn add_payment(
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(payload): Json<AddPaymentRequest>,
 ) -> Result<Json<SessionResponse>, AppError> {
@@ -83,23 +90,64 @@ pub async fn add_payment(
         payload.recipient_ens
     );
 
-    // TODO: Add to session store
-    Err(AppError::NotImplemented(
-        "Add payment not implemented".to_string(),
-    ))
+    // Create the payment
+    let payment = Payment {
+        id: Uuid::new_v4().to_string(),
+        recipient: payload.recipient,
+        recipient_ens: payload.recipient_ens,
+        amount: payload.amount,
+        status: PaymentStatus::Pending,
+        created_at: chrono::Utc::now(),
+    };
+
+    // Add to session store
+    match state.session_store.add_payment(&id, payment).await {
+        Some(session) => Ok(Json(SessionResponse { session })),
+        None => Err(AppError::NotFound(format!(
+            "Session {} not found or payment failed",
+            id
+        ))),
+    }
+}
+
+/// Finalize session request
+#[derive(Deserialize)]
+pub struct FinalizeRequest {
+    pub tx_hash: Option<String>,
 }
 
 /// Finalize session
 #[derive(Serialize)]
 pub struct FinalizeResponse {
-    pub tx_hash: String,
+    pub session_id: String,
+    pub status: String,
+    pub tx_hash: Option<String>,
 }
 
-pub async fn finalize_session(Path(id): Path<String>) -> Result<Json<FinalizeResponse>, AppError> {
-    tracing::info!("Finalizing session {}", id);
+pub async fn finalize_session(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<FinalizeRequest>,
+) -> Result<Json<FinalizeResponse>, AppError> {
+    tracing::info!(
+        "Finalizing session {} with tx_hash: {:?}",
+        id,
+        payload.tx_hash
+    );
 
-    // TODO: Call smart contract
-    Err(AppError::NotImplemented(
-        "Finalize session not implemented".to_string(),
-    ))
+    use crate::models::session::SessionStatus;
+
+    // Update session status and persist tx_hash
+    match state
+        .session_store
+        .finalize(&id, SessionStatus::Pending, payload.tx_hash.clone())
+        .await
+    {
+        Some(session) => Ok(Json(FinalizeResponse {
+            session_id: id,
+            status: "pending".to_string(),
+            tx_hash: session.tx_hash,
+        })),
+        None => Err(AppError::NotFound(format!("Session {} not found", id))),
+    }
 }

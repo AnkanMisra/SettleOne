@@ -28,6 +28,9 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     //                           STORAGE
     // =============================================================
 
+    /// @notice Maximum number of settlements allowed in a single batch
+    uint256 public constant MAX_BATCH_SIZE = 100;
+
     /// @notice The USDC token used for settlements
     IERC20 public immutable usdc;
 
@@ -82,17 +85,14 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     ) external nonReentrant {
         _validateSettlement(sessionId, amount, recipient);
 
-        // Check contract has sufficient USDC balance
-        uint256 balance = usdc.balanceOf(address(this));
-        if (balance < amount) {
-            revert SessionErrors.InsufficientBalance(amount, balance);
-        }
+        // Validate sender has sufficient allowance before any state changes
+        _validateAllowance(msg.sender, amount);
 
         // Mark session as settled and deactivate
         _markSettled(sessionId);
 
-        // Transfer USDC to recipient
-        usdc.safeTransfer(recipient, amount);
+        // Transfer USDC from sender to recipient using their approval
+        usdc.safeTransferFrom(msg.sender, recipient, amount);
 
         emit SessionSettled(sessionId, recipient, amount, block.timestamp);
     }
@@ -108,21 +108,21 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
         if (settlements.length == 0) {
             revert SessionErrors.EmptyBatch();
         }
+        if (settlements.length > MAX_BATCH_SIZE) {
+            revert SessionErrors.BatchTooLarge(settlements.length, MAX_BATCH_SIZE);
+        }
 
         // Calculate total amount and validate settlements
         uint256 totalAmount = _calculateAndValidateBatch(settlements);
 
-        // Check contract has sufficient balance
-        uint256 balance = usdc.balanceOf(address(this));
-        if (balance < totalAmount) {
-            revert SessionErrors.InsufficientBalance(totalAmount, balance);
-        }
+        // Validate sender has sufficient allowance before any state changes
+        _validateAllowance(msg.sender, totalAmount);
 
         // Mark session as settled
         _markSettled(sessionId);
 
-        // Execute all transfers
-        _executeBatchTransfers(sessionId, settlements);
+        // Execute all transfers from sender's approved balance
+        _executeBatchTransfersFrom(msg.sender, sessionId, settlements);
 
         emit BatchSettled(sessionId, totalAmount, settlements.length);
     }
@@ -203,6 +203,7 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
 
     /**
      * @dev Calculates total amount and validates batch settlements
+     * @notice Uses unchecked arithmetic with explicit overflow check for custom error
      */
     function _calculateAndValidateBatch(
         Settlement[] calldata settlements
@@ -214,19 +215,37 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
             if (settlements[i].amount == 0) {
                 revert SessionErrors.InvalidAmount();
             }
-            totalAmount += settlements[i].amount;
+            // Use unchecked to bypass automatic overflow and provide custom error
+            unchecked {
+                uint256 newTotal = totalAmount + settlements[i].amount;
+                if (newTotal < totalAmount) {
+                    revert SessionErrors.BatchAmountOverflow();
+                }
+                totalAmount = newTotal;
+            }
         }
     }
 
     /**
-     * @dev Executes batch transfers and emits events
+     * @dev Validates that sender has sufficient allowance for the total amount
      */
-    function _executeBatchTransfers(
+    function _validateAllowance(address sender, uint256 requiredAmount) internal view {
+        uint256 currentAllowance = usdc.allowance(sender, address(this));
+        if (currentAllowance < requiredAmount) {
+            revert SessionErrors.InsufficientAllowance(requiredAmount, currentAllowance);
+        }
+    }
+
+    /**
+     * @dev Executes batch transfers from sender's approved balance and emits events
+     */
+    function _executeBatchTransfersFrom(
+        address from,
         bytes32 sessionId,
         Settlement[] calldata settlements
     ) internal {
         for (uint256 i = 0; i < settlements.length; i++) {
-            usdc.safeTransfer(settlements[i].recipient, settlements[i].amount);
+            usdc.safeTransferFrom(from, settlements[i].recipient, settlements[i].amount);
             emit SessionSettled(
                 sessionId,
                 settlements[i].recipient,

@@ -17,9 +17,11 @@ async function main() {
     polygon: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     arbitrum: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     optimism: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     
     // Testnets
     sepolia: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // Circle USDC on Sepolia
+    baseSepolia: "", // Will deploy mock - no official USDC on Base Sepolia
     arc: process.env.ARC_USDC_ADDRESS || "0x0000000000000000000000000000000000000001", // Placeholder
     
     // Local
@@ -29,8 +31,8 @@ async function main() {
 
   let usdcAddress = USDC_ADDRESSES[network.name];
 
-  // Deploy MockUSDC for local testing
-  if (!usdcAddress || network.name === "hardhat" || network.name === "localhost") {
+  // Deploy MockUSDC for local testing or testnets without official USDC
+  if (!usdcAddress || network.name === "hardhat" || network.name === "localhost" || network.name === "baseSepolia") {
     console.log("\nDeploying MockUSDC for local testing...");
     const MockUSDC = await ethers.getContractFactory("MockUSDC");
     const mockUsdc = await MockUSDC.deploy();

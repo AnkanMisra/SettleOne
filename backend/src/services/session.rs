@@ -7,12 +7,10 @@ use tokio::sync::RwLock;
 use crate::models::session::{Payment, Session, SessionStatus};
 
 /// Session store (in-memory for hackathon)
-#[allow(dead_code)]
 pub struct SessionStore {
     sessions: Arc<RwLock<HashMap<String, Session>>>,
 }
 
-#[allow(dead_code)]
 impl SessionStore {
     /// Create a new session store
     pub fn new() -> Self {
@@ -51,6 +49,26 @@ impl SessionStore {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
             session.status = status;
+            return Some(session.clone());
+        }
+        None
+    }
+
+    /// Finalize session with status and optional tx_hash
+    /// Only updates tx_hash if a value is provided (preserves existing tx_hash otherwise)
+    pub async fn finalize(
+        &self,
+        session_id: &str,
+        status: SessionStatus,
+        tx_hash: Option<String>,
+    ) -> Option<Session> {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            session.status = status;
+            // Only update tx_hash if a new value is provided
+            if let Some(hash) = tx_hash {
+                session.tx_hash = Some(hash);
+            }
             return Some(session.clone());
         }
         None
