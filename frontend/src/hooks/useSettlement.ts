@@ -14,6 +14,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
   useReadContract,
+  usePublicClient,
 } from 'wagmi';
 import { parseUnits, keccak256, toBytes } from 'viem';
 import {
@@ -52,6 +53,7 @@ interface UseSettlementReturn {
 export function useSettlement(): UseSettlementReturn {
   const { address } = useAccount();
   const chainId = useChainId();
+  const publicClient = usePublicClient();
 
   const [isApproving, setIsApproving] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
@@ -105,20 +107,32 @@ export function useSettlement(): UseSettlementReturn {
         return false;
       }
 
+      if (!publicClient) {
+        setError('Unable to connect to network');
+        return false;
+      }
+
       setIsApproving(true);
       setError(null);
 
       try {
         const amountInUnits = parseUnits(amount, 6);
 
-        await writeContractAsync({
+        const hash = await writeContractAsync({
           address: usdcAddress,
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [contractAddress, amountInUnits],
         });
 
-        // Refetch allowance after approval
+        // Wait for the transaction to be confirmed before proceeding
+        // This prevents the race condition where we check allowance before tx is mined
+        await publicClient.waitForTransactionReceipt({
+          hash,
+          confirmations: 1,
+        });
+
+        // Refetch allowance after confirmation to ensure we have the latest value
         await refetchAllowance();
         setIsApproving(false);
         return true;
@@ -128,7 +142,7 @@ export function useSettlement(): UseSettlementReturn {
         return false;
       }
     },
-    [usdcAddress, contractAddress, writeContractAsync, refetchAllowance]
+    [usdcAddress, contractAddress, publicClient, writeContractAsync, refetchAllowance]
   );
 
   // Settle a single session
@@ -140,6 +154,11 @@ export function useSettlement(): UseSettlementReturn {
     ): Promise<`0x${string}` | null> => {
       if (!contractAddress) {
         setError('Contract not deployed on this network');
+        return null;
+      }
+
+      if (!publicClient) {
+        setError('Unable to connect to network');
         return null;
       }
 
@@ -158,6 +177,12 @@ export function useSettlement(): UseSettlementReturn {
           args: [sessionIdBytes, amountInUnits, recipient],
         });
 
+        // Wait for the transaction to be confirmed
+        await publicClient.waitForTransactionReceipt({
+          hash,
+          confirmations: 1,
+        });
+
         setIsSettling(false);
         return hash;
       } catch (err) {
@@ -166,7 +191,7 @@ export function useSettlement(): UseSettlementReturn {
         return null;
       }
     },
-    [contractAddress, writeContractAsync]
+    [contractAddress, publicClient, writeContractAsync]
   );
 
   // Settle a batch of payments
@@ -177,6 +202,11 @@ export function useSettlement(): UseSettlementReturn {
     ): Promise<`0x${string}` | null> => {
       if (!contractAddress) {
         setError('Contract not deployed on this network');
+        return null;
+      }
+
+      if (!publicClient) {
+        setError('Unable to connect to network');
         return null;
       }
 
@@ -205,6 +235,12 @@ export function useSettlement(): UseSettlementReturn {
           args: [sessionIdBytes, formattedSettlements],
         });
 
+        // Wait for the transaction to be confirmed
+        await publicClient.waitForTransactionReceipt({
+          hash,
+          confirmations: 1,
+        });
+
         setIsSettling(false);
         return hash;
       } catch (err) {
@@ -213,7 +249,7 @@ export function useSettlement(): UseSettlementReturn {
         return null;
       }
     },
-    [contractAddress, writeContractAsync]
+    [contractAddress, publicClient, writeContractAsync]
   );
 
   return {

@@ -229,7 +229,7 @@ describe("SessionSettlement", function () {
       });
 
       it("should revert with insufficient sender allowance", async function () {
-        const { settlement, usdc, user1, recipient1 } = await loadFixture(
+        const { settlement, user1, recipient1 } = await loadFixture(
           deployContractsFixture,
         );
         const sessionId = generateSessionId(user1.address, 1);
@@ -237,14 +237,14 @@ describe("SessionSettlement", function () {
         // Try to settle more than the owner has approved
         const excessiveAmount = INITIAL_USDC_SUPPLY + 1n;
 
-        // This will revert with ERC20 error since sender doesn't have enough allowance
+        // This will revert with our custom InsufficientAllowance error
         await expect(
           settlement.finalizeSession(
             sessionId,
             excessiveAmount,
             recipient1.address,
           ),
-        ).to.be.revertedWithCustomError(usdc, "ERC20InsufficientAllowance");
+        ).to.be.revertedWithCustomError(settlement, "InsufficientAllowance");
       });
     });
   });
@@ -361,7 +361,7 @@ describe("SessionSettlement", function () {
       });
 
       it("should revert with insufficient sender allowance for batch", async function () {
-        const { settlement, usdc, user1, recipient1 } = await loadFixture(
+        const { settlement, user1, recipient1 } = await loadFixture(
           deployContractsFixture,
         );
         const sessionId = generateSessionId(user1.address, 1);
@@ -371,10 +371,10 @@ describe("SessionSettlement", function () {
           { recipient: recipient1.address, amount: 1n },
         ];
 
-        // This will revert with ERC20 error since sender doesn't have enough allowance
+        // This will revert with our custom InsufficientAllowance error
         await expect(
           settlement.finalizeSessionBatch(sessionId, settlements),
-        ).to.be.revertedWithCustomError(usdc, "ERC20InsufficientAllowance");
+        ).to.be.revertedWithCustomError(settlement, "InsufficientAllowance");
       });
 
       it("should revert when batch exceeds MAX_BATCH_SIZE", async function () {
@@ -394,6 +394,25 @@ describe("SessionSettlement", function () {
         )
           .to.be.revertedWithCustomError(settlement, "BatchTooLarge")
           .withArgs(101, 100);
+      });
+
+      it("should revert when batch total amount would overflow", async function () {
+        const { settlement, user1, recipient1 } = await loadFixture(
+          deployContractsFixture,
+        );
+        const sessionId = generateSessionId(user1.address, 1);
+
+        // Use max uint256 value to trigger overflow on second addition
+        const maxUint256 = 2n ** 256n - 1n;
+        const settlements = [
+          { recipient: recipient1.address, amount: maxUint256 },
+          { recipient: recipient1.address, amount: 1n },
+        ];
+
+        // This should revert with BatchAmountOverflow due to our overflow protection
+        await expect(
+          settlement.finalizeSessionBatch(sessionId, settlements),
+        ).to.be.revertedWithCustomError(settlement, "BatchAmountOverflow");
       });
     });
   });

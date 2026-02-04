@@ -38,6 +38,14 @@ library SessionErrors {
     /// @param available The available balance
     error InsufficientBalance(uint256 required, uint256 available);
 
+    /// @notice Thrown when sender has insufficient USDC allowance
+    /// @param required The required allowance
+    /// @param available The current allowance
+    error InsufficientAllowance(uint256 required, uint256 available);
+
     /// @notice Thrown when USDC address is invalid
     error InvalidUSDCAddress();
+
+    /// @notice Thrown when batch total amount overflows
+    error BatchAmountOverflow();
 }

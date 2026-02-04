@@ -85,6 +85,9 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     ) external nonReentrant {
         _validateSettlement(sessionId, amount, recipient);
 
+        // Validate sender has sufficient allowance before any state changes
+        _validateAllowance(msg.sender, amount);
+
         // Mark session as settled and deactivate
         _markSettled(sessionId);
 
@@ -111,6 +114,9 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
 
         // Calculate total amount and validate settlements
         uint256 totalAmount = _calculateAndValidateBatch(settlements);
+
+        // Validate sender has sufficient allowance before any state changes
+        _validateAllowance(msg.sender, totalAmount);
 
         // Mark session as settled
         _markSettled(sessionId);
@@ -197,6 +203,7 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
 
     /**
      * @dev Calculates total amount and validates batch settlements
+     * @notice Uses unchecked arithmetic with explicit overflow check for custom error
      */
     function _calculateAndValidateBatch(
         Settlement[] calldata settlements
@@ -208,7 +215,24 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
             if (settlements[i].amount == 0) {
                 revert SessionErrors.InvalidAmount();
             }
-            totalAmount += settlements[i].amount;
+            // Use unchecked to bypass automatic overflow and provide custom error
+            unchecked {
+                uint256 newTotal = totalAmount + settlements[i].amount;
+                if (newTotal < totalAmount) {
+                    revert SessionErrors.BatchAmountOverflow();
+                }
+                totalAmount = newTotal;
+            }
+        }
+    }
+
+    /**
+     * @dev Validates that sender has sufficient allowance for the total amount
+     */
+    function _validateAllowance(address sender, uint256 requiredAmount) internal view {
+        uint256 currentAllowance = usdc.allowance(sender, address(this));
+        if (currentAllowance < requiredAmount) {
+            revert SessionErrors.InsufficientAllowance(requiredAmount, currentAllowance);
         }
     }
 
