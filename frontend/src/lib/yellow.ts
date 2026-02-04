@@ -4,19 +4,32 @@
  * Uses @erc7824/nitrolite for off-chain state channel sessions.
  * Each payment session is managed via Yellow's ClearNode for instant payments,
  * with final settlement occurring on-chain via our SessionSettlement contract.
+ *
+ * Flow:
+ * 1. Connect to ClearNode WebSocket
+ * 2. Send auth_request -> receive auth_challenge -> send auth_verify
+ * 3. Create app session for payments
+ * 4. Submit app state updates for each payment
+ * 5. Close session and settle on-chain
  */
 
 import type { Hex, Address } from 'viem';
 import {
   parseAnyRPCResponse,
+  createAuthRequestMessage,
+  createAuthVerifyMessageFromChallenge,
   createAppSessionMessage,
+  createSubmitAppStateMessage,
+  createCloseAppSessionMessage,
   createPingMessageV2,
   type MessageSigner as NitroliteMessageSigner,
   type RPCResponse,
   type RPCData,
   type RPCAppDefinition,
   type RPCAppSessionAllocation,
+  type CloseAppSessionRequestParams,
   RPCProtocolVersion,
+  RPCAppStateIntent,
 } from '@erc7824/nitrolite';
 
 // ClearNode endpoints
@@ -39,6 +52,7 @@ export interface YellowSessionConfig {
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
+  onAuthenticated?: () => void;
 }
 
 export interface YellowMessage {
@@ -49,7 +63,9 @@ export interface YellowMessage {
     | 'error'
     | 'state_update'
     | 'auth_challenge'
-    | 'auth_verified';
+    | 'auth_verified'
+    | 'session_closed'
+    | 'pong';
   sessionId?: string;
   amount?: string;
   sender?: string;
@@ -58,6 +74,7 @@ export interface YellowMessage {
   error?: string;
   timestamp?: number;
   method?: string;
+  challenge?: string;
 }
 
 export interface YellowPayment {
@@ -69,9 +86,12 @@ export interface YellowPayment {
 
 export interface YellowSessionState {
   sessionId: string | null;
+  appSessionId: Hex | null;
   isConnected: boolean;
+  isAuthenticated: boolean;
   payments: YellowPayment[];
   totalSent: bigint;
+  stateVersion: number;
 }
 
 /**
@@ -82,16 +102,32 @@ export class YellowSession {
   private ws: WebSocket | null = null;
   private config: YellowSessionConfig;
   private sessionId: string | null = null;
+  private appSessionId: Hex | null = null;
   private isConnected = false;
   private isConnecting = false;
+  private isAuthenticated = false;
   private isManualDisconnect = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private payments: YellowPayment[] = [];
   private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private stateVersion = 0;
+  private pendingAuthResolve: (() => void) | null = null;
+  private pendingSessionResolve: ((sessionId: string) => void) | null = null;
 
   constructor(config: YellowSessionConfig) {
     this.config = config;
+  }
+
+  /**
+   * Create SDK-compatible message signer
+   * SDK's MessageSigner expects (payload: RPCData) => Promise<Hex>
+   */
+  private createSdkSigner(): NitroliteMessageSigner {
+    return async (payload: RPCData): Promise<Hex> => {
+      const messageString = JSON.stringify(payload);
+      return this.config.messageSigner(messageString);
+    };
   }
 
   /**
@@ -110,7 +146,7 @@ export class YellowSession {
 
     // Close any existing stale WebSocket
     if (this.ws) {
-      this.ws.onclose = null; // Prevent triggering reconnect
+      this.ws.onclose = null;
       this.ws.onerror = null;
       this.ws.onopen = null;
       this.ws.onmessage = null;
@@ -121,7 +157,7 @@ export class YellowSession {
     // Reset flags for new connection
     this.isManualDisconnect = false;
     this.isConnecting = true;
-    
+
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(CLEARNODE_URL);
@@ -131,17 +167,16 @@ export class YellowSession {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           console.log('[Yellow] Connected to ClearNode');
-          
-          // Start heartbeat using SDK's ping message
+
+          // Start heartbeat
           this.startHeartbeat();
-          
+
           this.config.onConnect?.();
           resolve();
         };
 
         this.ws.onmessage = (event) => {
           try {
-            // Pass raw string to parseMessage - SDK handles JSON parsing
             const message = this.parseMessage(event.data);
             this.handleMessage(message);
           } catch (err) {
@@ -154,10 +189,9 @@ export class YellowSession {
           const err = new Error('Yellow Network connection error');
           this.config.onError?.(err);
           if (!this.isConnected) {
-            // Clean up WebSocket before rejecting
             this.isConnecting = false;
             if (this.ws) {
-              this.ws.onclose = null; // Prevent reconnect attempt
+              this.ws.onclose = null;
               this.ws.close();
               this.ws = null;
             }
@@ -168,6 +202,7 @@ export class YellowSession {
         this.ws.onclose = () => {
           this.isConnected = false;
           this.isConnecting = false;
+          this.isAuthenticated = false;
           console.log('[Yellow] Disconnected from ClearNode');
           this.config.onDisconnect?.();
           this.attemptReconnect();
@@ -180,21 +215,106 @@ export class YellowSession {
   }
 
   /**
+   * Authenticate with ClearNode
+   * Sends auth_request, waits for auth_challenge, then sends auth_verify
+   */
+  async authenticate(): Promise<void> {
+    if (!this.ws || !this.isConnected) {
+      throw new Error('Not connected to Yellow Network');
+    }
+
+    if (this.isAuthenticated) {
+      console.log('[Yellow] Already authenticated');
+      return;
+    }
+
+    const timestamp = Date.now();
+
+    // Create auth request message using SDK
+    const authRequest = await createAuthRequestMessage(
+      {
+        address: this.config.userAddress as Address,
+        session_key: this.config.userAddress as Address, // Using main address as session key for demo
+        application: 'settleone',
+        allowances: [],
+        expires_at: BigInt(timestamp + 86400000), // 24 hours from now
+        scope: 'payment',
+      },
+      timestamp,
+      timestamp
+    );
+
+    // Send auth request
+    this.ws.send(authRequest);
+    console.log('[Yellow] Auth request sent');
+
+    // Wait for auth to complete (handled in handleMessage)
+    return new Promise((resolve) => {
+      this.pendingAuthResolve = resolve;
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (this.pendingAuthResolve) {
+          this.pendingAuthResolve = null;
+          console.warn('[Yellow] Auth timeout');
+        }
+      }, 30000);
+    });
+  }
+
+  /**
+   * Handle auth challenge response
+   */
+  private async handleAuthChallenge(challenge: string): Promise<void> {
+    if (!this.ws || !this.isConnected) {
+      console.error('[Yellow] Cannot respond to auth challenge - not connected');
+      return;
+    }
+
+    try {
+      const timestamp = Date.now();
+      const sdkSigner = this.createSdkSigner();
+
+      // Create auth verify message using SDK
+      const authVerify = await createAuthVerifyMessageFromChallenge(
+        sdkSigner,
+        challenge,
+        timestamp,
+        timestamp
+      );
+
+      this.ws.send(authVerify);
+      console.log('[Yellow] Auth verify sent');
+    } catch (err) {
+      console.error('[Yellow] Failed to respond to auth challenge:', err);
+      this.config.onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  /**
    * Parse Yellow Network RPC message into our format
    */
   private parseMessage(raw: string): YellowMessage {
     try {
       // Use SDK's parser for proper RPC response handling
       const parsed: RPCResponse = parseAnyRPCResponse(raw);
-      
+
       // Extract method from the response
       const method = (parsed as { method?: string }).method || 'unknown';
-      
+
+      // Extract challenge if present
+      const params = (parsed as { params?: { challengeMessage?: string; challenge_message?: string } }).params;
+      const challenge = params?.challengeMessage || params?.challenge_message;
+
+      // Extract app session ID if present
+      const result = (parsed as { result?: { app_session_id?: Hex; appSessionId?: Hex; sessionId?: string } }).result;
+      const appSessionId = result?.app_session_id || result?.appSessionId;
+
       return {
         type: this.methodToType(method),
         method: method,
         data: parsed,
-        sessionId: (parsed as { result?: { sessionId?: string } }).result?.sessionId,
+        sessionId: result?.sessionId || (appSessionId as string),
+        challenge,
         timestamp: Date.now(),
       };
     } catch {
@@ -209,7 +329,7 @@ export class YellowSession {
   private parseMessageFallback(raw: string): YellowMessage {
     try {
       const parsed = JSON.parse(raw);
-      
+
       // Handle array format [requestId, method, params, timestamp?]
       if (Array.isArray(parsed)) {
         const [, method, params] = parsed;
@@ -217,6 +337,7 @@ export class YellowSession {
           type: this.methodToType(method as string),
           method: method as string,
           data: params,
+          challenge: (params as { challengeMessage?: string })?.challengeMessage,
           timestamp: Date.now(),
         };
       }
@@ -224,6 +345,7 @@ export class YellowSession {
       // Handle object format
       if (typeof parsed === 'object' && parsed !== null) {
         const obj = parsed as Record<string, unknown>;
+        const params = obj.params as Record<string, unknown> | undefined;
         return {
           type: (obj.type as YellowMessage['type']) || 'session_message',
           sessionId: obj.sessionId as string | undefined,
@@ -232,6 +354,7 @@ export class YellowSession {
           recipient: obj.recipient as string | undefined,
           data: obj,
           error: obj.error as string | undefined,
+          challenge: params?.challengeMessage as string | undefined,
           timestamp: Date.now(),
         };
       }
@@ -250,10 +373,12 @@ export class YellowSession {
     switch (method) {
       case 'create_app_session':
       case 'app_session_created':
+      case 'create_app_session_response':
         return 'session_created';
       case 'submit_app_state':
       case 'state_update':
       case 'app_state_update':
+      case 'submit_app_state_response':
         return 'state_update';
       case 'submit_payment':
       case 'payment':
@@ -265,7 +390,13 @@ export class YellowSession {
         return 'auth_challenge';
       case 'auth_verify':
       case 'auth_verified':
+      case 'auth_verify_response':
         return 'auth_verified';
+      case 'close_app_session':
+      case 'close_app_session_response':
+        return 'session_closed';
+      case 'pong':
+        return 'pong';
       default:
         return 'session_message';
     }
@@ -275,15 +406,12 @@ export class YellowSession {
    * Disconnect from ClearNode
    */
   disconnect(): void {
-    // Set flag to prevent automatic reconnection
     this.isManualDisconnect = true;
     this.isConnecting = false;
-    
-    // Stop heartbeat
+
     this.stopHeartbeat();
-    
+
     if (this.ws) {
-      // Remove handlers to prevent any callbacks
       this.ws.onclose = null;
       this.ws.onerror = null;
       this.ws.onopen = null;
@@ -292,8 +420,11 @@ export class YellowSession {
       this.ws = null;
     }
     this.isConnected = false;
+    this.isAuthenticated = false;
     this.sessionId = null;
+    this.appSessionId = null;
     this.payments = [];
+    this.stateVersion = 0;
     this.reconnectAttempts = 0;
   }
 
@@ -302,8 +433,7 @@ export class YellowSession {
    */
   private startHeartbeat(): void {
     this.stopHeartbeat();
-    
-    // Send ping every 30 seconds to keep connection alive
+
     this.pingInterval = setInterval(() => {
       if (this.ws && this.isConnected) {
         try {
@@ -335,25 +465,24 @@ export class YellowSession {
       throw new Error('Not connected to Yellow Network');
     }
 
-    // Generate a unique session ID (numeric for SDK, string for internal use)
-    const timestamp = Date.now();
-    const requestIdNumeric = timestamp; // SDK expects number
-    const requestIdString = `settleone-${timestamp}`; // For fallback/internal use
+    // Authenticate first if not already
+    if (!this.isAuthenticated) {
+      console.log('[Yellow] Authenticating before session creation...');
+      await this.authenticate();
+    }
 
-    // Create the SDK-compatible message signer
-    // SDK's MessageSigner expects (payload: RPCData) => Promise<Hex>
-    // We stringify the RPCData and pass to our string-based signer
-    const sdkSigner: NitroliteMessageSigner = async (payload: RPCData) => {
-      const messageString = JSON.stringify(payload);
-      return this.config.messageSigner(messageString);
-    };
+    const timestamp = Date.now();
+    const requestIdNumeric = timestamp;
+    const requestIdString = `settleone-${timestamp}`;
+
+    const sdkSigner = this.createSdkSigner();
 
     // Create the app session request using SDK types
     const definition: RPCAppDefinition = {
       application: 'settleone-payment',
       protocol: RPCProtocolVersion.NitroRPC_0_4,
       participants: [this.config.userAddress as Hex, partnerAddress as Hex],
-      weights: [100, 0], // Sender has full control
+      weights: [100, 0],
       quorum: 100,
       challenge: 0,
       nonce: timestamp,
@@ -375,7 +504,6 @@ export class YellowSession {
     const sessionParams = { definition, allocations };
 
     try {
-      // Use SDK to create the signed message
       const signedMessage = await createAppSessionMessage(
         sdkSigner,
         sessionParams,
@@ -384,18 +512,28 @@ export class YellowSession {
       );
 
       this.ws.send(signedMessage);
+      console.log('[Yellow] Create session request sent');
     } catch (err) {
       console.error('[Yellow] Failed to create session with SDK, using fallback:', err);
-      // Fallback to manual message creation
       await this.createSessionFallback(partnerAddress, requestIdString);
     }
 
-    // For demo purposes, create a local session ID immediately
-    // In production, we'd wait for ClearNode confirmation
+    // Set local session ID immediately for demo
+    // In production, wait for ClearNode confirmation
     this.sessionId = requestIdString;
-    console.log('[Yellow] Session created:', this.sessionId);
+    this.stateVersion = 0;
 
-    return this.sessionId;
+    // Wait for session confirmation with timeout
+    return new Promise((resolve) => {
+      this.pendingSessionResolve = resolve;
+      // Resolve immediately for demo (ClearNode will confirm async)
+      setTimeout(() => {
+        if (this.pendingSessionResolve) {
+          this.pendingSessionResolve(this.sessionId!);
+          this.pendingSessionResolve = null;
+        }
+      }, 100);
+    });
   }
 
   /**
@@ -439,6 +577,7 @@ export class YellowSession {
 
   /**
    * Send an instant payment through the Yellow Network state channel
+   * Uses SDK's createSubmitAppStateMessage for proper protocol compliance
    */
   async sendPayment(recipient: string, amount: string): Promise<void> {
     if (!this.ws || !this.isConnected) {
@@ -449,37 +588,61 @@ export class YellowSession {
       throw new Error('No active session');
     }
 
-    const paymentData = {
-      jsonrpc: '2.0',
-      id: `payment-${Date.now()}`,
-      method: 'submit_app_state',
-      params: {
-        sessionId: this.sessionId,
-        type: 'payment',
-        amount,
-        recipient,
-        asset: 'usdc',
-        timestamp: Date.now(),
-      },
-    };
+    const timestamp = Date.now();
+    this.stateVersion++;
 
-    // Sign the payment
-    const signature = await this.config.messageSigner(
-      JSON.stringify(paymentData)
-    );
+    // If we have an app session ID from ClearNode, use SDK method
+    if (this.appSessionId) {
+      try {
+        const sdkSigner = this.createSdkSigner();
 
-    const signedPayment = {
-      ...paymentData,
-      signature,
-      sender: this.config.userAddress,
-    };
+        // Calculate new allocations after payment
+        const currentTotal = this.payments.reduce(
+          (sum, p) => sum + BigInt(p.amount),
+          BigInt(0)
+        );
+        const newTotal = currentTotal + BigInt(amount);
 
-    // Send through ClearNode
-    try {
-      this.ws.send(JSON.stringify(signedPayment));
-    } catch (err) {
-      console.error('[Yellow] Failed to send payment:', err);
-      throw new Error('Failed to send payment request');
+        const stateParams = {
+          app_session_id: this.appSessionId,
+          intent: RPCAppStateIntent.Operate,
+          version: this.stateVersion,
+          allocations: [
+            {
+              participant: this.config.userAddress as Address,
+              asset: 'usdc',
+              amount: newTotal.toString(),
+            },
+            {
+              participant: recipient as Address,
+              asset: 'usdc',
+              amount: amount,
+            },
+          ],
+          session_data: JSON.stringify({
+            type: 'payment',
+            recipient,
+            amount,
+            timestamp,
+          }),
+        };
+
+        const signedMessage = await createSubmitAppStateMessage<typeof RPCProtocolVersion.NitroRPC_0_4>(
+          sdkSigner,
+          stateParams,
+          timestamp,
+          timestamp
+        );
+
+        this.ws.send(signedMessage);
+        console.log('[Yellow] Payment sent via SDK');
+      } catch (err) {
+        console.error('[Yellow] SDK payment failed, using fallback:', err);
+        await this.sendPaymentFallback(recipient, amount, timestamp);
+      }
+    } else {
+      // Use fallback if no app session ID yet
+      await this.sendPaymentFallback(recipient, amount, timestamp);
     }
 
     // Track payment locally
@@ -487,10 +650,122 @@ export class YellowSession {
       recipient,
       amount,
       asset: 'usdc',
-      timestamp: paymentData.params.timestamp,
+      timestamp,
     });
 
-    console.log('[Yellow] Payment sent:', amount, 'to', recipient);
+    console.log('[Yellow] Payment recorded:', amount, 'to', recipient);
+  }
+
+  /**
+   * Fallback payment without SDK
+   */
+  private async sendPaymentFallback(recipient: string, amount: string, timestamp: number): Promise<void> {
+    if (!this.ws) return;
+
+    const paymentData = {
+      jsonrpc: '2.0',
+      id: `payment-${timestamp}`,
+      method: 'submit_app_state',
+      params: {
+        sessionId: this.sessionId,
+        type: 'payment',
+        amount,
+        recipient,
+        asset: 'usdc',
+        version: this.stateVersion,
+        timestamp,
+      },
+    };
+
+    const signature = await this.config.messageSigner(JSON.stringify(paymentData));
+
+    const signedPayment = {
+      ...paymentData,
+      signature,
+      sender: this.config.userAddress,
+    };
+
+    this.ws.send(JSON.stringify(signedPayment));
+  }
+
+  /**
+   * Close the current session
+   * Returns final state for on-chain settlement
+   */
+  async closeSession(): Promise<{ payments: YellowPayment[]; totalSent: bigint }> {
+    if (!this.ws || !this.isConnected) {
+      throw new Error('Not connected to Yellow Network');
+    }
+
+    if (!this.sessionId) {
+      throw new Error('No active session');
+    }
+
+    const timestamp = Date.now();
+
+    // Calculate final allocations
+    const totalSent = this.payments.reduce(
+      (sum, p) => sum + BigInt(p.amount),
+      BigInt(0)
+    );
+
+    // Aggregate by recipient
+    const recipientTotals = new Map<string, bigint>();
+    for (const payment of this.payments) {
+      const current = recipientTotals.get(payment.recipient) || BigInt(0);
+      recipientTotals.set(payment.recipient, current + BigInt(payment.amount));
+    }
+
+    const finalAllocations: RPCAppSessionAllocation[] = Array.from(recipientTotals.entries()).map(
+      ([participant, amt]) => ({
+        participant: participant as Address,
+        asset: 'usdc',
+        amount: amt.toString(),
+      })
+    );
+
+    // Add sender's remaining allocation
+    finalAllocations.unshift({
+      participant: this.config.userAddress as Address,
+      asset: 'usdc',
+      amount: totalSent.toString(),
+    });
+
+    if (this.appSessionId) {
+      try {
+        const sdkSigner = this.createSdkSigner();
+
+        const closeParams: CloseAppSessionRequestParams = {
+          app_session_id: this.appSessionId,
+          allocations: finalAllocations,
+        };
+
+        const signedMessage = await createCloseAppSessionMessage(
+          sdkSigner,
+          closeParams,
+          timestamp,
+          timestamp
+        );
+
+        this.ws.send(signedMessage);
+        console.log('[Yellow] Close session request sent');
+      } catch (err) {
+        console.error('[Yellow] Failed to close session with SDK:', err);
+      }
+    }
+
+    const result = {
+      payments: [...this.payments],
+      totalSent,
+    };
+
+    // Clear local state
+    this.sessionId = null;
+    this.appSessionId = null;
+    this.payments = [];
+    this.stateVersion = 0;
+
+    return result;
   }
 
   /**
@@ -504,9 +779,12 @@ export class YellowSession {
 
     return {
       sessionId: this.sessionId,
+      appSessionId: this.appSessionId,
       isConnected: this.isConnected,
+      isAuthenticated: this.isAuthenticated,
       payments: [...this.payments],
       totalSent,
+      stateVersion: this.stateVersion,
     };
   }
 
@@ -514,7 +792,6 @@ export class YellowSession {
    * Get all payments in the current session for on-chain settlement
    */
   getPaymentsForSettlement(): Array<{ recipient: string; amount: bigint }> {
-    // Aggregate payments by recipient
     const aggregated = new Map<string, bigint>();
 
     for (const payment of this.payments) {
@@ -530,9 +807,32 @@ export class YellowSession {
 
   private handleMessage(message: YellowMessage): void {
     switch (message.type) {
+      case 'auth_challenge':
+        console.log('[Yellow] Auth challenge received');
+        if (message.challenge) {
+          this.handleAuthChallenge(message.challenge);
+        }
+        break;
+
+      case 'auth_verified':
+        this.isAuthenticated = true;
+        console.log('[Yellow] Authentication successful');
+        this.config.onAuthenticated?.();
+        if (this.pendingAuthResolve) {
+          this.pendingAuthResolve();
+          this.pendingAuthResolve = null;
+        }
+        break;
+
       case 'session_created':
-        this.sessionId = message.sessionId || this.sessionId;
-        console.log('[Yellow] Session confirmed:', this.sessionId);
+        if (message.sessionId) {
+          this.appSessionId = message.sessionId as Hex;
+          console.log('[Yellow] Session confirmed:', this.appSessionId);
+        }
+        if (this.pendingSessionResolve) {
+          this.pendingSessionResolve(this.sessionId || message.sessionId || '');
+          this.pendingSessionResolve = null;
+        }
         break;
 
       case 'payment':
@@ -540,19 +840,21 @@ export class YellowSession {
         break;
 
       case 'state_update':
-        console.log('[Yellow] State updated');
+        console.log('[Yellow] State updated, version:', this.stateVersion);
+        break;
+
+      case 'session_closed':
+        console.log('[Yellow] Session closed');
+        this.sessionId = null;
+        this.appSessionId = null;
         break;
 
       case 'error':
         console.error('[Yellow] Error:', message.error);
         break;
 
-      case 'auth_challenge':
-        console.log('[Yellow] Auth challenge received');
-        break;
-
-      case 'auth_verified':
-        console.log('[Yellow] Auth verified');
+      case 'pong':
+        // Heartbeat acknowledged
         break;
 
       default:
@@ -563,18 +865,16 @@ export class YellowSession {
   }
 
   private attemptReconnect(): void {
-    // Don't reconnect if disconnect was called manually
     if (this.isManualDisconnect) {
       console.log('[Yellow] Skipping reconnect - manual disconnect');
       return;
     }
 
-    // Don't reconnect if a connection is already in progress
     if (this.isConnecting) {
       console.log('[Yellow] Skipping reconnect - connection in progress');
       return;
     }
-    
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.log('[Yellow] Max reconnection attempts reached');
       return;
