@@ -112,6 +112,12 @@ export class YellowSession {
           const err = new Error('Yellow Network connection error');
           this.config.onError?.(err);
           if (!this.isConnected) {
+            // Clean up WebSocket before rejecting
+            if (this.ws) {
+              this.ws.onclose = null; // Prevent reconnect attempt
+              this.ws.close();
+              this.ws = null;
+            }
             reject(err);
           }
         };
@@ -249,7 +255,12 @@ export class YellowSession {
       sender: this.config.userAddress,
     };
 
-    this.ws.send(JSON.stringify(signedMessage));
+    try {
+      this.ws.send(JSON.stringify(signedMessage));
+    } catch (err) {
+      console.error('[Yellow] Failed to send session creation:', err);
+      throw new Error('Failed to send session creation request');
+    }
 
     // For demo purposes, create a local session ID immediately
     // In production, we'd wait for ClearNode confirmation
@@ -297,7 +308,12 @@ export class YellowSession {
     };
 
     // Send through ClearNode
-    this.ws.send(JSON.stringify(signedPayment));
+    try {
+      this.ws.send(JSON.stringify(signedPayment));
+    } catch (err) {
+      console.error('[Yellow] Failed to send payment:', err);
+      throw new Error('Failed to send payment request');
+    }
 
     // Track payment locally
     this.payments.push({

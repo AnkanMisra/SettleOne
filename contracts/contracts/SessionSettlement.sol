@@ -28,6 +28,9 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     //                           STORAGE
     // =============================================================
 
+    /// @notice Maximum number of settlements allowed in a single batch
+    uint256 public constant MAX_BATCH_SIZE = 100;
+
     /// @notice The USDC token used for settlements
     IERC20 public immutable usdc;
 
@@ -101,6 +104,9 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
         }
         if (settlements.length == 0) {
             revert SessionErrors.EmptyBatch();
+        }
+        if (settlements.length > MAX_BATCH_SIZE) {
+            revert SessionErrors.BatchTooLarge(settlements.length, MAX_BATCH_SIZE);
         }
 
         // Calculate total amount and validate settlements

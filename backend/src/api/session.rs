@@ -110,6 +110,12 @@ pub async fn add_payment(
     }
 }
 
+/// Finalize session request
+#[derive(Deserialize)]
+pub struct FinalizeRequest {
+    pub tx_hash: Option<String>,
+}
+
 /// Finalize session
 #[derive(Serialize)]
 pub struct FinalizeResponse {
@@ -121,8 +127,13 @@ pub struct FinalizeResponse {
 pub async fn finalize_session(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Json(payload): Json<FinalizeRequest>,
 ) -> Result<Json<FinalizeResponse>, AppError> {
-    tracing::info!("Finalizing session {}", id);
+    tracing::info!(
+        "Finalizing session {} with tx_hash: {:?}",
+        id,
+        payload.tx_hash
+    );
 
     use crate::models::session::SessionStatus;
 
@@ -132,15 +143,11 @@ pub async fn finalize_session(
         .update_status(&id, SessionStatus::Pending)
         .await
     {
-        Some(_session) => {
-            // TODO: Call smart contract for on-chain settlement
-            // For now, return a placeholder response
-            Ok(Json(FinalizeResponse {
-                session_id: id,
-                status: "pending".to_string(),
-                tx_hash: None, // Will be set after actual contract call
-            }))
-        }
+        Some(_session) => Ok(Json(FinalizeResponse {
+            session_id: id,
+            status: "pending".to_string(),
+            tx_hash: payload.tx_hash,
+        })),
         None => Err(AppError::NotFound(format!("Session {} not found", id))),
     }
 }

@@ -25,11 +25,7 @@ export const arcTestnet = {
 export const config = createConfig({
   chains: [mainnet, sepolia, baseSepolia, base, arbitrum, polygon, optimism, arcTestnet],
   connectors: [
-    // MetaMask via injected connector
-    injected({
-      target: 'metaMask',
-    }),
-    // Also support any injected wallet (Phantom, etc.)
+    // MetaMask and other injected wallets (Phantom, etc.)
     injected(),
   ],
   transports: {

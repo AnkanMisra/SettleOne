@@ -123,13 +123,14 @@ class ApiClient {
     });
   }
 
-  async finalizeSession(sessionId: string): Promise<{
+  async finalizeSession(sessionId: string, txHash?: string): Promise<{
     session_id: string;
     status: string;
     tx_hash: string | null;
   }> {
     return this.request(`/api/session/${sessionId}/finalize`, {
       method: 'POST',
+      body: JSON.stringify({ tx_hash: txHash }),
     });
   }
 

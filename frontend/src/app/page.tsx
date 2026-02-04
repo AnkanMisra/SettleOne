@@ -36,6 +36,7 @@ export default function Home() {
     approveUSDC,
     settleSessionBatch,
     getContractAddress,
+    checkAllowance,
   } = useSettlement();
 
   // Yellow Network integration for off-chain instant payments
@@ -113,12 +114,16 @@ export default function Home() {
       setSettlementStatus('Checking USDC approval...');
       setViewMode('approving');
 
-      // Step 2: Approve USDC if needed
-      const approved = await approveUSDC(totalAmount);
-      if (!approved) {
-        setSettlementStatus('USDC approval failed');
-        setViewMode('home');
-        return;
+      // Step 2: Check allowance and approve USDC if needed
+      const hasAllowance = await checkAllowance(totalAmount);
+      if (!hasAllowance) {
+        setSettlementStatus('Approving USDC...');
+        const approved = await approveUSDC(totalAmount);
+        if (!approved) {
+          setSettlementStatus('USDC approval failed');
+          setViewMode('home');
+          return;
+        }
       }
 
       // Step 3: Execute on-chain settlement
@@ -135,8 +140,8 @@ export default function Home() {
       const hash = await settleSessionBatch(session.id, settlements);
 
       if (hash) {
-        // Step 4: Update backend
-        await finalizeSession();
+        // Step 4: Update backend with tx_hash
+        await finalizeSession(hash);
         
         setSettlementStatus('');
         setViewMode('home');

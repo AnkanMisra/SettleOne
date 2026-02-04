@@ -944,9 +944,6 @@ YELLOW_API_KEY=             # Not set
 | Add proper README | 20 min | Better presentation | P1 | Pending |
 | Display LI.FI quotes | 1 hour | Sponsor requirement | P1 | Pending |
 | Add toast notifications | 30 min | Better UX | P2 | Pending |
-| Add proper README | 20 min | Better presentation | P1 |
-| Display LI.FI quotes | 1 hour | Sponsor requirement | P1 |
-| Add toast notifications | 30 min | Better UX | P2 |
 
 ---
 

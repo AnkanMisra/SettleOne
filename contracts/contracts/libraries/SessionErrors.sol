@@ -28,6 +28,11 @@ library SessionErrors {
     /// @notice Thrown when batch settlement array is empty
     error EmptyBatch();
 
+    /// @notice Thrown when batch exceeds maximum allowed size
+    /// @param size The batch size provided
+    /// @param maxSize The maximum allowed batch size
+    error BatchTooLarge(uint256 size, uint256 maxSize);
+
     /// @notice Thrown when contract has insufficient USDC balance
     /// @param required The required amount
     /// @param available The available balance

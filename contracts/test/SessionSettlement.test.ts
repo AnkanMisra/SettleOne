@@ -376,6 +376,25 @@ describe("SessionSettlement", function () {
           settlement.finalizeSessionBatch(sessionId, settlements),
         ).to.be.revertedWithCustomError(usdc, "ERC20InsufficientAllowance");
       });
+
+      it("should revert when batch exceeds MAX_BATCH_SIZE", async function () {
+        const { settlement, user1, recipient1 } = await loadFixture(
+          deployContractsFixture,
+        );
+        const sessionId = generateSessionId(user1.address, 1);
+
+        // Create a batch with 101 settlements (MAX_BATCH_SIZE is 100)
+        const settlements = Array.from({ length: 101 }, () => ({
+          recipient: recipient1.address,
+          amount: ethers.parseUnits("1", 6),
+        }));
+
+        await expect(
+          settlement.finalizeSessionBatch(sessionId, settlements),
+        )
+          .to.be.revertedWithCustomError(settlement, "BatchTooLarge")
+          .withArgs(101, 100);
+      });
     });
   });
 

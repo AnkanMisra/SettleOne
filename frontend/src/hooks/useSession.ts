@@ -14,7 +14,7 @@ export interface UseSessionReturn {
     amount: string,
     recipientENS?: string
   ) => Promise<boolean>;
-  finalizeSession: () => Promise<string | null>;
+  finalizeSession: (txHash?: string) => Promise<string | null>;
   refreshSession: () => Promise<void>;
 }
 
@@ -91,7 +91,7 @@ export function useSession(): UseSessionReturn {
     [session]
   );
 
-  const finalizeSession = useCallback(async (): Promise<string | null> => {
+  const finalizeSession = useCallback(async (txHash?: string): Promise<string | null> => {
     if (!session) {
       setError('No active session');
       return null;
@@ -101,13 +101,7 @@ export function useSession(): UseSessionReturn {
     setError(null);
 
     try {
-      const response = await api.finalizeSession(session.id);
-
-      // Backend returns status - check if it's an error status
-      if (response.status === 'error') {
-        setError('Failed to finalize session');
-        return null;
-      }
+      const response = await api.finalizeSession(session.id, txHash);
 
       // Clear session after finalization
       if (response.status === 'pending') {
