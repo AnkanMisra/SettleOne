@@ -1,5 +1,5 @@
 import { http, createConfig } from 'wagmi';
-import { mainnet, sepolia, arbitrum, polygon, optimism } from 'wagmi/chains';
+import { mainnet, sepolia, arbitrum, polygon, optimism, base, baseSepolia } from 'wagmi/chains';
 import { injected } from 'wagmi/connectors';
 
 // Define Arc testnet chain (placeholder - update with actual values)
@@ -23,12 +23,14 @@ export const arcTestnet = {
 } as const;
 
 export const config = createConfig({
-  chains: [mainnet, sepolia, arbitrum, polygon, optimism, arcTestnet],
+  chains: [mainnet, sepolia, baseSepolia, base, arbitrum, polygon, optimism, arcTestnet],
   connectors: [
     // MetaMask via injected connector
     injected({
       target: 'metaMask',
     }),
+    // Also support any injected wallet (Phantom, etc.)
+    injected(),
   ],
   transports: {
     [mainnet.id]: http(
@@ -41,6 +43,8 @@ export const config = createConfig({
         ? `https://eth-sepolia.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_ID}`
         : undefined
     ),
+    [baseSepolia.id]: http('https://sepolia.base.org'),
+    [base.id]: http('https://mainnet.base.org'),
     [arbitrum.id]: http(),
     [polygon.id]: http(),
     [optimism.id]: http(),

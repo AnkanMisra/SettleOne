@@ -194,6 +194,10 @@ export const SESSION_SETTLEMENT_ADDRESSES: Record<number, `0x${string}` | undefi
   4457845: undefined,
   // Sepolia Testnet - TODO: Deploy and update
   11155111: undefined,
+  // Base Sepolia Testnet - DEPLOYED
+  84532: '0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2',
+  // Base Mainnet - TODO: Deploy and update
+  8453: undefined,
   // Mainnet - TODO: Deploy and update
   1: undefined,
 };
@@ -206,6 +210,7 @@ export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
   137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base
   11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia
+  84532: '0xc5c8977491c2dc822F4f738356ec0231F7100f52', // Base Sepolia - MockUSDC deployed
 };
 
 // ERC20 ABI for USDC interactions

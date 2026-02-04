@@ -1,20 +1,23 @@
 # SettleOne – Architecture Overview
 
+**Last Updated**: February 4, 2026
+
 SettleOne is composed of four core layers:
 
 ## 1. Frontend (Next.js + React)
-- Connects wallet using wagmi/viem with MetaMask
+- Connects wallet using wagmi/viem with MetaMask or Phantom
 - Resolves ENS names via viem provider
 - Displays LI.FI cross-chain quotes
 - Opens Yellow Network session and manages payments
-- Triggers session finalization via backend API
+- **Executes on-chain settlement via `useSettlement` hook**
+- Supports Base, Base Sepolia, Ethereum, and other EVM chains
 
 ## 2. Backend (Rust + Axum)
 - RESTful API for session management
+- **Shared `AppState` with `Arc<SessionStore>` for session persistence**
 - ENS resolution service (caches results)
 - LI.FI API proxy for cross-chain quotes
-- Yellow SDK integration for off-chain state
-- Prepares batch settlement data for on-chain call
+- Yellow SDK integration for off-chain state (TODO)
 - Async/await architecture with Tokio runtime
 
 **Tech Stack:**
@@ -24,12 +27,16 @@ SettleOne is composed of four core layers:
 - Serialization: serde/serde_json
 - Error Handling: thiserror/anyhow
 
-## 3. Smart Contracts (Arc Chain - Solidity)
+## 3. Smart Contracts (Base Sepolia - Solidity)
 - **SessionSettlement.sol**: Main settlement contract
 - **ISessionSettlement.sol**: Interface definitions
 - **SessionErrors.sol**: Custom error library
 - **SessionTypes.sol**: Shared type definitions
 - **MockUSDC.sol**: Test mock for USDC
+
+**Deployed Contracts (Base Sepolia)**:
+- SessionSettlement: `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2`
+- MockUSDC: `0xc5c8977491c2dc822F4f738356ec0231F7100f52`
 
 **Features:**
 - Single and batch settlement support
@@ -45,39 +52,32 @@ SettleOne is composed of four core layers:
 │                         USER BROWSER                            │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │                   Next.js Frontend                        │   │
-│  │  • MetaMask Wallet Connection                            │   │
+│  │  • MetaMask/Phantom Wallet Connection                    │   │
 │  │  • ENS Input Resolution                                   │   │
 │  │  • Payment Session UI                                     │   │
+│  │  • useSettlement Hook (On-chain TX)                      │   │
 │  └─────────────────────────┬────────────────────────────────┘   │
 └────────────────────────────┼────────────────────────────────────┘
-                             │ HTTP/REST
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      RUST BACKEND (Axum)                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │ ENS API  │  │ Session  │  │  Quote   │  │  Health  │        │
-│  │ Handler  │  │  API     │  │   API    │  │  Check   │        │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └──────────┘        │
-│       │             │             │                              │
-│  ┌────┴─────┐  ┌────┴─────┐  ┌────┴─────┐                       │
-│  │   ENS    │  │ Session  │  │  LI.FI   │                       │
-│  │ Service  │  │ Service  │  │ Service  │                       │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘                       │
-└───────┼─────────────┼─────────────┼─────────────────────────────┘
-        │             │             │
-        ▼             ▼             ▼
-┌───────────┐  ┌───────────┐  ┌───────────┐
-│ Ethereum  │  │  Yellow   │  │  LI.FI    │
-│ Mainnet   │  │  Network  │  │   API     │
-│   (ENS)   │  │   SDK     │  │           │
-└───────────┘  └─────┬─────┘  └───────────┘
-                     │
-                     ▼
-              ┌───────────┐
-              │ Arc Chain │
-              │  (USDC)   │
-              │ Settlement│
-              └───────────┘
+                             │ HTTP/REST          │ wagmi/viem
+                             ▼                    ▼
+┌────────────────────────────────────────┐  ┌───────────────────┐
+│          RUST BACKEND (Axum)           │  │   Base Sepolia    │
+│  ┌──────────┐  ┌──────────┐            │  │                   │
+│  │ Session  │  │  Quote   │            │  │ SessionSettlement │
+│  │  Store   │  │   API    │            │  │     Contract      │
+│  └────┬─────┘  └────┬─────┘            │  │                   │
+│       │             │                   │  │   MockUSDC        │
+│  ┌────┴─────┐  ┌────┴─────┐            │  │                   │
+│  │ Session  │  │  LI.FI   │            │  └───────────────────┘
+│  │ Service  │  │ Service  │            │
+│  └──────────┘  └────┬─────┘            │
+└─────────────────────┼──────────────────┘
+                      │
+                      ▼
+               ┌───────────┐
+               │  LI.FI    │
+               │   API     │
+               └───────────┘
 ```
 
 ### External SDKs & APIs

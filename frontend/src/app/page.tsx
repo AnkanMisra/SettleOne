@@ -1,17 +1,23 @@
 'use client';
 
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { useState } from 'react';
+import { parseUnits } from 'viem';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
 import { PaymentForm } from '@/components/features/PaymentForm';
 import { useSession } from '@/hooks/useSession';
+import { useSettlement } from '@/hooks/useSettlement';
+import { SESSION_SETTLEMENT_ADDRESSES } from '@/lib/contracts';
 
-type ViewMode = 'home' | 'payment';
+type ViewMode = 'home' | 'payment' | 'approving' | 'settling';
 
 export default function Home() {
   const { isConnected } = useAccount();
+  const chainId = useChainId();
   const [viewMode, setViewMode] = useState<ViewMode>('home');
+  const [settlementStatus, setSettlementStatus] = useState<string>('');
+  
   const {
     session,
     isLoading,
@@ -20,6 +26,17 @@ export default function Home() {
     addPayment,
     finalizeSession,
   } = useSession();
+
+  const {
+    isApproving,
+    isSettling,
+    isPending,
+    error: settlementError,
+    txHash,
+    approveUSDC,
+    settleSessionBatch,
+    getContractAddress,
+  } = useSettlement();
 
   const handleStartSession = async () => {
     const sessionId = await createSession();
@@ -46,10 +63,60 @@ export default function Home() {
   };
 
   const handleFinalize = async () => {
-    const txHash = await finalizeSession();
-    if (txHash) {
-      // Show success notification
-      alert(`Settlement complete! TX: ${txHash}`);
+    if (!session || session.payments.length === 0) {
+      return;
+    }
+
+    const contractAddress = getContractAddress();
+    if (!contractAddress) {
+      alert(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
+      return;
+    }
+
+    try {
+      // Step 1: Calculate total amount needed
+      const totalAmount = session.total_amount;
+      setSettlementStatus('Checking USDC approval...');
+      setViewMode('approving');
+
+      // Step 2: Approve USDC if needed
+      const approved = await approveUSDC(totalAmount);
+      if (!approved) {
+        setSettlementStatus('USDC approval failed');
+        setViewMode('home');
+        return;
+      }
+
+      // Step 3: Execute on-chain settlement
+      setSettlementStatus('Settling on-chain...');
+      setViewMode('settling');
+
+      // Prepare settlements array from session payments
+      const settlements = session.payments.map((payment) => ({
+        recipient: payment.recipient,
+        amount: BigInt(payment.amount),
+      }));
+
+      const hash = await settleSessionBatch(session.id, settlements);
+
+      if (hash) {
+        // Step 4: Update backend
+        await finalizeSession();
+        
+        setSettlementStatus('');
+        setViewMode('home');
+        
+        // Show success with block explorer link
+        const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`;
+        alert(`Settlement complete!\n\nTransaction: ${hash.slice(0, 10)}...${hash.slice(-8)}\n\nView on explorer: ${explorerUrl}`);
+      } else {
+        setSettlementStatus('Settlement failed');
+        setViewMode('home');
+      }
+    } catch (err) {
+      console.error('Settlement error:', err);
+      setSettlementStatus('');
+      setViewMode('home');
     }
   };
 
@@ -112,12 +179,40 @@ export default function Home() {
               />
             </div>
           ) : session ? (
-            <SessionCard
-              session={session}
-              onAddPayment={() => setViewMode('payment')}
-              onFinalize={handleFinalize}
-              isLoading={isLoading}
-            />
+            <div>
+              {/* Settlement Status Banner */}
+              {(viewMode === 'approving' || viewMode === 'settling') && (
+                <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-blue-400 text-sm font-medium">
+                      {settlementStatus || 'Processing...'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Settlement Error Banner */}
+              {settlementError && (
+                <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                  {settlementError}
+                </div>
+              )}
+
+              {/* Contract Warning */}
+              {!SESSION_SETTLEMENT_ADDRESSES[chainId] && (
+                <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-400 text-sm">
+                  Contract not deployed on this network. Please switch to Base Sepolia (Chain ID: 84532).
+                </div>
+              )}
+
+              <SessionCard
+                session={session}
+                onAddPayment={() => setViewMode('payment')}
+                onFinalize={handleFinalize}
+                isLoading={isLoading || isApproving || isSettling || isPending}
+              />
+            </div>
           ) : (
             <div className="space-y-6">
               {/* No session yet - show start button */}

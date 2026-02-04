@@ -66,7 +66,105 @@
   - **Git Rules**: Never force push, use conventional commits.
   - **Workflow Requirements**: New folders must have CI workflows.
 
-## 8. Final Status
+## 8. Final Status (Previous Session)
 - **Backend**: Compiles cleanly, passes all tests, passes clippy (no warnings).
 - **PR #9**: Ready for merge with all critical safety and logic bugs resolved.
 - **CI**: All workflows operational and passing.
+
+---
+
+## Session 2: February 4, 2026
+
+### 9. Phase 3.5: Backend Shared State Implementation
+- **Goal**: Make the API functional by persisting session data across requests.
+- **Implementation**:
+  - Created `AppState` struct in `backend/src/main.rs` holding `Arc<SessionStore>`.
+  - Updated `create_app()` to accept state and use `.with_state(state)`.
+  - Refactored all session handlers to use `State<AppState>` extractor:
+    - `create_session`: Now stores sessions in memory.
+    - `get_session`: Retrieves from store, returns 404 if not found.
+    - `add_payment`: Creates `Payment` object and persists to session.
+    - `finalize_session`: Updates status to `Pending` (ready for contract call).
+  - Removed `#[allow(dead_code)]` from `SessionStore` and `Session` impl blocks.
+- **Verification**: `cargo fmt --check && cargo clippy -- -D warnings && cargo test` - All 4 tests pass.
+
+### 10. Phase 4: Contract Deployment - COMPLETE
+- **Network**: Base Sepolia (Chain ID: 84532)
+- **Deployer**: `0x699ed028F3E5cD905c46B77bb0D8E8506c9e1082`
+- **Deployed Contracts**:
+  - **SessionSettlement**: `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2`
+  - **MockUSDC**: `0xc5c8977491c2dc822F4f738356ec0231F7100f52`
+- **Block Explorer**: https://sepolia.basescan.org/address/0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2
+- **Frontend Updated**: `frontend/src/lib/contracts.ts` with deployed addresses.
+- **Deployment File**: `contracts/deployments/baseSepolia.json`
+
+### 11. Phase 5: Frontend Settlement Hooks - COMPLETE
+- **Created**: `frontend/src/hooks/useSettlement.ts`
+- **Features**:
+  - `approveUSDC(amount)` - Approve contract to spend USDC
+  - `settleSession(sessionId, amount, recipient)` - Single settlement
+  - `settleSessionBatch(sessionId, settlements)` - Batch settlement
+  - `checkAllowance(amount)` - Check if approval needed
+  - Transaction state tracking (`isPending`, `isSettling`, `error`, `txHash`)
+- **Wagmi Config Updated**:
+  - Added `base` and `baseSepolia` chains
+  - Added generic `injected()` connector for Phantom wallet support
+- **Build**: `pnpm build` passes successfully
+
+### 12. Phase 5b: Connect UI to Settlement - COMPLETE
+- **Updated**: `frontend/src/app/page.tsx`
+- **Features Implemented**:
+  - Import and use `useSettlement` hook
+  - `handleFinalize` now executes on-chain batch settlement
+  - USDC approval flow before settlement
+  - Settlement status banners (approving/settling states)
+  - Error display for settlement failures
+  - Warning when contract not deployed on current network
+  - Block explorer link on successful settlement
+- **Build**: `pnpm build` passes successfully
+
+### Summary of Session 2 Accomplishments
+1. **Backend State**: Implemented `AppState` with shared `SessionStore`
+2. **Contract Deployment**: Deployed to Base Sepolia
+   - SessionSettlement: `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2`
+   - MockUSDC: `0xc5c8977491c2dc822F4f738356ec0231F7100f52`
+3. **Frontend Wagmi**: Added Base/Base Sepolia chains, Phantom support
+4. **useSettlement Hook**: Created for on-chain transactions
+5. **UI Integration**: Connected "Settle All" button to actual blockchain
+
+### Next Steps
+- Test end-to-end flow with Phantom wallet on Base Sepolia
+- Yellow SDK integration (Phase 6 - Sponsor requirement)
+
+---
+
+## Current Project Status (As of February 4, 2026)
+
+### Overall Completion: ~75%
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Smart Contracts | 100% ✅ | Deployed to Base Sepolia |
+| Frontend | 80% ✅ | Settlement UI working |
+| Backend | 70% ✅ | Shared state implemented |
+| SDK Integration | 10% ❌ | Yellow SDK missing |
+| Testing & QA | 40% ~ | Partial coverage |
+| Documentation | 80% ✅ | Updated |
+| Deployment | 80% ✅ | Contracts deployed |
+
+### Remaining Critical Work
+1. **Yellow SDK Integration** (HIGH priority - Sponsor requirement)
+2. LI.FI quote display in UI
+3. Frontend/Backend deployment to hosting
+4. End-to-end testing
+
+### Deployed Contracts
+| Contract | Address | Network |
+|----------|---------|---------|
+| SessionSettlement | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` | Base Sepolia |
+| MockUSDC | `0xc5c8977491c2dc822F4f738356ec0231F7100f52` | Base Sepolia |
+
+### Build Status
+- **Frontend**: `pnpm build` ✅
+- **Backend**: `cargo test` ✅ (4 tests)
+- **Contracts**: `pnpm test` ✅ (25 tests)

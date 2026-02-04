@@ -44,7 +44,6 @@ pub struct Session {
     pub created_at: DateTime<Utc>,
 }
 
-#[allow(dead_code)]
 impl Session {
     /// Create a new session
     pub fn new(id: String, user: String) -> Self {

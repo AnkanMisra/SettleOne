@@ -12,6 +12,8 @@ mod models;
 mod services;
 mod utils;
 
+use std::sync::Arc;
+
 use axum::{
     routing::{get, post},
     Router,
@@ -19,6 +21,14 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::services::session::SessionStore;
+
+/// Shared application state
+#[derive(Clone)]
+pub struct AppState {
+    pub session_store: Arc<SessionStore>,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,8 +44,13 @@ async fn main() -> anyhow::Result<()> {
     // Load environment variables
     dotenvy::dotenv().ok();
 
+    // Initialize shared state
+    let state = AppState {
+        session_store: Arc::new(SessionStore::new()),
+    };
+
     // Build application
-    let app = create_app();
+    let app = create_app(state.clone());
 
     // Get port from environment or default
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".to_string());
@@ -51,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Create the application router with all API routes
-fn create_app() -> Router {
+fn create_app(state: AppState) -> Router {
     // CORS configuration - allow all origins for development
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -75,6 +90,8 @@ fn create_app() -> Router {
         )
         // Quote routes
         .route("/api/quote", get(api::quote::get_quote))
+        // Shared state
+        .with_state(state)
         // Middleware
         .layer(TraceLayer::new_for_http())
         .layer(cors)
@@ -86,9 +103,15 @@ mod tests {
     use axum::http::StatusCode;
     use axum_test::TestServer;
 
+    fn create_test_state() -> AppState {
+        AppState {
+            session_store: Arc::new(SessionStore::new()),
+        }
+    }
+
     #[tokio::test]
     async fn test_health_check() {
-        let app = create_app();
+        let app = create_app(create_test_state());
         let server = TestServer::new(app).unwrap();
 
         let response = server.get("/health").await;

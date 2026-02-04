@@ -7,12 +7,10 @@ use tokio::sync::RwLock;
 use crate::models::session::{Payment, Session, SessionStatus};
 
 /// Session store (in-memory for hackathon)
-#[allow(dead_code)]
 pub struct SessionStore {
     sessions: Arc<RwLock<HashMap<String, Session>>>,
 }
 
-#[allow(dead_code)]
 impl SessionStore {
     /// Create a new session store
     pub fn new() -> Self {
