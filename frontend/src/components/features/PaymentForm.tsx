@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { parseUnits } from 'viem';
 import { ENSInput } from './ENSInput';
 import { ChainSelector } from './ChainSelector';
+import { QuoteDisplay } from './QuoteDisplay';
+import { useQuote } from '@/hooks/useQuote';
+import { useDebouncedCallback } from '@/hooks/useDebounce';
 
 interface PaymentFormProps {
   onSubmit: (data: {
@@ -21,9 +24,52 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
   const [recipient, setRecipient] = useState('');
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
-  const [fromChainId, setFromChainId] = useState<number>(1); // Default to Ethereum
-  const [toChainId, setToChainId] = useState<number>(42161); // Default to Arbitrum
+  const [fromChainId, setFromChainId] = useState<number>(8453); // Default to Base
+  const [toChainId, setToChainId] = useState<number>(8453); // Default to Base (same chain)
   const [error, setError] = useState<string | null>(null);
+
+  const { quote, isLoading: quoteLoading, error: quoteError, fetchQuote, clearQuote } = useQuote();
+
+  // Check if it's a cross-chain transfer
+  const isCrossChain = useMemo(() => fromChainId !== toChainId, [fromChainId, toChainId]);
+
+  // Debounced quote fetch for cross-chain
+  const debouncedFetchQuote = useDebouncedCallback(
+    (amountValue: string, fromChain: number, toChain: number) => {
+      if (fromChain === toChain) {
+        clearQuote();
+        return;
+      }
+
+      const amountNum = parseFloat(amountValue);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        clearQuote();
+        return;
+      }
+
+      // Convert to base units (6 decimals for USDC)
+      try {
+        const amountInBaseUnits = parseUnits(amountValue, 6).toString();
+        fetchQuote({
+          fromChainId: fromChain,
+          toChainId: toChain,
+          amount: amountInBaseUnits,
+        });
+      } catch {
+        // Invalid amount format, ignore
+      }
+    },
+    500
+  );
+
+  // Fetch quote when relevant inputs change
+  useEffect(() => {
+    if (isCrossChain && amount) {
+      debouncedFetchQuote(amount, fromChainId, toChainId);
+    } else {
+      clearQuote();
+    }
+  }, [amount, fromChainId, toChainId, isCrossChain, debouncedFetchQuote, clearQuote]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,15 +145,31 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
           label="From Chain"
           selectedChainId={fromChainId}
           onSelect={setFromChainId}
-          excludeChainId={toChainId}
+          excludeChainId={undefined}
         />
         <ChainSelector
           label="To Chain"
           selectedChainId={toChainId}
           onSelect={setToChainId}
-          excludeChainId={fromChainId}
+          excludeChainId={undefined}
         />
       </div>
+
+      {/* Cross-chain indicator */}
+      {isCrossChain && (
+        <div className="flex items-center gap-2 text-sm">
+          <div className="w-2 h-2 bg-yellow-400 rounded-full" />
+          <span className="text-yellow-400">Cross-chain transfer via LI.FI</span>
+        </div>
+      )}
+
+      {/* Quote Display for cross-chain */}
+      <QuoteDisplay
+        quote={quote}
+        isLoading={quoteLoading}
+        error={quoteError}
+        isCrossChain={isCrossChain}
+      />
 
       {error && (
         <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">

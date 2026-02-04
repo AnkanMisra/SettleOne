@@ -6,7 +6,18 @@
  * with final settlement occurring on-chain via our SessionSettlement contract.
  */
 
-import type { Hex } from 'viem';
+import type { Hex, Address } from 'viem';
+import {
+  parseAnyRPCResponse,
+  createAppSessionMessage,
+  createPingMessageV2,
+  type MessageSigner as NitroliteMessageSigner,
+  type RPCResponse,
+  type RPCData,
+  type RPCAppDefinition,
+  type RPCAppSessionAllocation,
+  RPCProtocolVersion,
+} from '@erc7824/nitrolite';
 
 // ClearNode endpoints
 const CLEARNODE_SANDBOX = 'wss://clearnet-sandbox.yellow.com/ws';
@@ -77,6 +88,7 @@ export class YellowSession {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private payments: YellowPayment[] = [];
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: YellowSessionConfig) {
     this.config = config;
@@ -119,15 +131,18 @@ export class YellowSession {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           console.log('[Yellow] Connected to ClearNode');
+          
+          // Start heartbeat using SDK's ping message
+          this.startHeartbeat();
+          
           this.config.onConnect?.();
           resolve();
         };
 
         this.ws.onmessage = (event) => {
           try {
-            // Parse the JSON-RPC response
-            const rawMessage = JSON.parse(event.data);
-            const message = this.parseMessage(rawMessage);
+            // Pass raw string to parseMessage - SDK handles JSON parsing
+            const message = this.parseMessage(event.data);
             this.handleMessage(message);
           } catch (err) {
             console.error('[Yellow] Failed to parse message:', err);
@@ -167,31 +182,61 @@ export class YellowSession {
   /**
    * Parse Yellow Network RPC message into our format
    */
-  private parseMessage(raw: unknown): YellowMessage {
-    // Handle array format [requestId, method, params, timestamp?]
-    if (Array.isArray(raw)) {
-      const [, method, params] = raw;
+  private parseMessage(raw: string): YellowMessage {
+    try {
+      // Use SDK's parser for proper RPC response handling
+      const parsed: RPCResponse = parseAnyRPCResponse(raw);
+      
+      // Extract method from the response
+      const method = (parsed as { method?: string }).method || 'unknown';
+      
       return {
-        type: this.methodToType(method as string),
-        method: method as string,
-        data: params,
+        type: this.methodToType(method),
+        method: method,
+        data: parsed,
+        sessionId: (parsed as { result?: { sessionId?: string } }).result?.sessionId,
         timestamp: Date.now(),
       };
+    } catch {
+      // Fallback to manual parsing if SDK parser fails
+      return this.parseMessageFallback(raw);
     }
+  }
 
-    // Handle object format
-    if (typeof raw === 'object' && raw !== null) {
-      const obj = raw as Record<string, unknown>;
-      return {
-        type: (obj.type as YellowMessage['type']) || 'session_message',
-        sessionId: obj.sessionId as string | undefined,
-        amount: obj.amount as string | undefined,
-        sender: obj.sender as string | undefined,
-        recipient: obj.recipient as string | undefined,
-        data: obj,
-        error: obj.error as string | undefined,
-        timestamp: Date.now(),
-      };
+  /**
+   * Fallback parser for non-standard messages
+   */
+  private parseMessageFallback(raw: string): YellowMessage {
+    try {
+      const parsed = JSON.parse(raw);
+      
+      // Handle array format [requestId, method, params, timestamp?]
+      if (Array.isArray(parsed)) {
+        const [, method, params] = parsed;
+        return {
+          type: this.methodToType(method as string),
+          method: method as string,
+          data: params,
+          timestamp: Date.now(),
+        };
+      }
+
+      // Handle object format
+      if (typeof parsed === 'object' && parsed !== null) {
+        const obj = parsed as Record<string, unknown>;
+        return {
+          type: (obj.type as YellowMessage['type']) || 'session_message',
+          sessionId: obj.sessionId as string | undefined,
+          amount: obj.amount as string | undefined,
+          sender: obj.sender as string | undefined,
+          recipient: obj.recipient as string | undefined,
+          data: obj,
+          error: obj.error as string | undefined,
+          timestamp: Date.now(),
+        };
+      }
+    } catch {
+      // Return raw as data if parsing fails
     }
 
     return {
@@ -234,6 +279,9 @@ export class YellowSession {
     this.isManualDisconnect = true;
     this.isConnecting = false;
     
+    // Stop heartbeat
+    this.stopHeartbeat();
+    
     if (this.ws) {
       // Remove handlers to prevent any callbacks
       this.ws.onclose = null;
@@ -250,6 +298,36 @@ export class YellowSession {
   }
 
   /**
+   * Start heartbeat/ping interval using SDK
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    
+    // Send ping every 30 seconds to keep connection alive
+    this.pingInterval = setInterval(() => {
+      if (this.ws && this.isConnected) {
+        try {
+          const pingMessage = createPingMessageV2();
+          this.ws.send(pingMessage);
+          console.log('[Yellow] Ping sent');
+        } catch (err) {
+          console.error('[Yellow] Failed to send ping:', err);
+        }
+      }
+    }, 30000);
+  }
+
+  /**
+   * Stop heartbeat interval
+   */
+  private stopHeartbeat(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  /**
    * Create a new payment session on Yellow Network
    */
   async createSession(partnerAddress: string): Promise<string> {
@@ -257,67 +335,106 @@ export class YellowSession {
       throw new Error('Not connected to Yellow Network');
     }
 
-    // Generate a unique session ID
-    const requestId = `settleone-${Date.now()}`;
+    // Generate a unique session ID (numeric for SDK, string for internal use)
+    const timestamp = Date.now();
+    const requestIdNumeric = timestamp; // SDK expects number
+    const requestIdString = `settleone-${timestamp}`; // For fallback/internal use
 
-    // Create the app session request following Yellow RPC format
+    // Create the SDK-compatible message signer
+    // SDK's MessageSigner expects (payload: RPCData) => Promise<Hex>
+    // We stringify the RPCData and pass to our string-based signer
+    const sdkSigner: NitroliteMessageSigner = async (payload: RPCData) => {
+      const messageString = JSON.stringify(payload);
+      return this.config.messageSigner(messageString);
+    };
+
+    // Create the app session request using SDK types
+    const definition: RPCAppDefinition = {
+      application: 'settleone-payment',
+      protocol: RPCProtocolVersion.NitroRPC_0_4,
+      participants: [this.config.userAddress as Hex, partnerAddress as Hex],
+      weights: [100, 0], // Sender has full control
+      quorum: 100,
+      challenge: 0,
+      nonce: timestamp,
+    };
+
+    const allocations: RPCAppSessionAllocation[] = [
+      {
+        participant: this.config.userAddress as Address,
+        asset: 'usdc',
+        amount: '0',
+      },
+      {
+        participant: partnerAddress as Address,
+        asset: 'usdc',
+        amount: '0',
+      },
+    ];
+
+    const sessionParams = { definition, allocations };
+
+    try {
+      // Use SDK to create the signed message
+      const signedMessage = await createAppSessionMessage(
+        sdkSigner,
+        sessionParams,
+        requestIdNumeric,
+        timestamp
+      );
+
+      this.ws.send(signedMessage);
+    } catch (err) {
+      console.error('[Yellow] Failed to create session with SDK, using fallback:', err);
+      // Fallback to manual message creation
+      await this.createSessionFallback(partnerAddress, requestIdString);
+    }
+
+    // For demo purposes, create a local session ID immediately
+    // In production, we'd wait for ClearNode confirmation
+    this.sessionId = requestIdString;
+    console.log('[Yellow] Session created:', this.sessionId);
+
+    return this.sessionId;
+  }
+
+  /**
+   * Fallback session creation without SDK
+   */
+  private async createSessionFallback(partnerAddress: string, requestId: string): Promise<void> {
+    if (!this.ws) return;
+
     const appDefinition = {
       protocol: 'settleone-payment-v1',
       participants: [this.config.userAddress, partnerAddress],
-      weights: [100, 0], // Sender has full control
+      weights: [100, 0],
       quorum: 100,
       challenge: 0,
       nonce: Date.now(),
     };
 
     const allocations = [
-      {
-        participant: this.config.userAddress,
-        asset: 'usdc',
-        amount: '0',
-      },
-      {
-        participant: partnerAddress,
-        asset: 'usdc',
-        amount: '0',
-      },
+      { participant: this.config.userAddress, asset: 'usdc', amount: '0' },
+      { participant: partnerAddress, asset: 'usdc', amount: '0' },
     ];
 
-    // Build the RPC message
     const rpcMessage = {
       jsonrpc: '2.0',
       id: requestId,
       method: 'create_app_session',
-      params: {
-        definition: appDefinition,
-        allocations,
-      },
+      params: { definition: appDefinition, allocations },
     };
 
-    // Sign the message
     const messageToSign = JSON.stringify(rpcMessage);
     const signature = await this.config.messageSigner(messageToSign);
 
-    // Send signed request
     const signedMessage = {
       ...rpcMessage,
       signature,
       sender: this.config.userAddress,
     };
 
-    try {
-      this.ws.send(JSON.stringify(signedMessage));
-    } catch (err) {
-      console.error('[Yellow] Failed to send session creation:', err);
-      throw new Error('Failed to send session creation request');
-    }
-
-    // For demo purposes, create a local session ID immediately
-    // In production, we'd wait for ClearNode confirmation
-    this.sessionId = requestId;
-    console.log('[Yellow] Session created:', this.sessionId);
-
-    return this.sessionId;
+    this.ws.send(JSON.stringify(signedMessage));
   }
 
   /**
