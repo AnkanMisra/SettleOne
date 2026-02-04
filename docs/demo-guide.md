@@ -1,28 +1,116 @@
 # Demo Guide – SettleOne
 
+**Last Updated**: February 4, 2026 (Session 3)
+
 This guide explains how to demo SettleOne for judges.
 
-## 🔗 Live Frontend
-**URL:** [https://settleone.vercel.app](https://settleone.vercel.app)  
-Testnet only – Arc and Ethereum supported
+## Live Frontend
+**URL:** [https://settleone.vercel.app](https://settleone.vercel.app) *(TBD - pending deployment)*  
+**Network:** Base Sepolia (Chain ID: 84532)
 
-## 👣 Walkthrough
+## Prerequisites
 
-1. **Connect Wallet** (MetaMask or RainbowKit)
-2. Enter an ENS name (e.g., `demo.eth`) and USDC amount
-3. Start session (Yellow Network) – simulate multiple tips or payments
-4. If needed, select destination chain → cross-chain swap via LI.FI
-5. Click **"End Session"** → triggers final settlement on Arc
-6. Confirm USDC was received by the resolved address
+1. **MetaMask or Phantom wallet**
+2. **Base Sepolia network configured**:
+   - Network Name: Base Sepolia
+   - RPC URL: `https://sepolia.base.org`
+   - Chain ID: `84532`
+   - Currency: ETH
+   - Explorer: `https://sepolia.basescan.org`
 
-## 📼 Demo Video
-Length: 2m 30s  
-Covers: ENS input, session payments, settlement, LI.FI swap  
-**Link:** [YouTube / Loom demo link here]
+3. **Test ETH for gas** - Get from Base Sepolia faucet
+4. **MockUSDC for testing** - Mint from contract or request from team
 
-## 🧪 Testnet Config
-- Arc testnet RPC
-- USDC faucet (if available)
-- Use Sepolia or Goerli for ENS testing
+## Deployed Contracts
 
-All actions are logged in the browser console and contract events.
+| Contract | Address | Explorer |
+|----------|---------|----------|
+| SessionSettlement | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` | [View](https://sepolia.basescan.org/address/0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2) |
+| MockUSDC | `0xc5c8977491c2dc822F4f738356ec0231F7100f52` | [View](https://sepolia.basescan.org/address/0xc5c8977491c2dc822F4f738356ec0231F7100f52) |
+
+## Walkthrough
+
+### 1. Connect Wallet
+- Click "Connect Wallet" in header
+- Select MetaMask or injected wallet
+- Approve connection request
+- Ensure you're on Base Sepolia network
+
+### 2. Start a Session
+- Click "Start Session" button
+- This creates an off-chain session for batching payments
+- Yellow Network status indicator appears (if connected)
+
+### 3. Add Payments
+- Click "Add Payment"
+- Enter recipient's ENS name (e.g., `vitalik.eth`) or address
+- Enter amount in USDC
+- Select source/destination chains (optional for cross-chain)
+- Submit payment
+
+### 4. Review Session
+- See all pending payments in session card
+- Total amount calculated automatically
+- Each payment shows recipient and amount
+
+### 5. Settle On-Chain
+- Click "Settle All" button
+- **Step 1**: Approve USDC spending (if needed)
+  - Wait for approval transaction to confirm
+- **Step 2**: Execute batch settlement
+  - All payments transfer in one transaction
+- Success message shows transaction hash
+- Link to block explorer provided
+
+## What to Highlight for Judges
+
+### Yellow Network Integration
+- Show Yellow connection status in UI
+- Explain off-chain payment batching
+- Demonstrate instant payment confirmation before settlement
+
+### ENS Integration
+- Type `vitalik.eth` and show address resolution
+- Show avatar loading (when available)
+- Demonstrate error handling for invalid names
+
+### On-Chain Settlement
+- Show USDC approval transaction
+- Show batch settlement transaction
+- Point to block explorer for verification
+
+### Security Features
+- Mention integer overflow protection
+- Mention allowance pre-validation
+- Mention transaction confirmation waiting
+
+## Demo Video
+Length: 2-3 minutes  
+**Link:** [YouTube / Loom demo link TBD]
+
+### Video Script:
+1. **Intro** (15s): "SettleOne - Send USDC anywhere, settle once"
+2. **Connect Wallet** (15s): Show MetaMask connection
+3. **Start Session** (15s): Create new session
+4. **Add Payments** (30s): Add 2-3 payments with ENS names
+5. **Yellow Status** (15s): Show off-chain payment tracking
+6. **Settlement** (45s): Execute on-chain settlement
+7. **Verify** (15s): Show transaction on explorer
+8. **Outro** (15s): Recap sponsor integrations
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Wrong network | Switch to Base Sepolia (84532) |
+| Insufficient gas | Get test ETH from faucet |
+| Approval fails | Check USDC balance |
+| Settlement fails | Check allowance is sufficient |
+| ENS not resolving | Ensure mainnet ENS (uses mainnet for resolution) |
+
+## Technical Details
+
+- Frontend: Next.js 16 + React 19 + wagmi 3
+- Contracts: Solidity 0.8.20 + OpenZeppelin
+- Backend: Rust + Axum (optional for demo)
+- Settlement: Batch transfers via `finalizeSessionBatch()`

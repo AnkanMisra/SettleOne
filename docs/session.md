@@ -169,3 +169,109 @@
 - **Frontend**: `pnpm build` ✅
 - **Backend**: `cargo test` ✅ (4 tests)
 - **Contracts**: `pnpm test` ✅ (25 tests)
+
+---
+
+## Session 3: February 4, 2026 (PR #11)
+
+### 13. Yellow Network WebSocket Integration
+- **Goal**: Implement Yellow Network client for off-chain payments
+- **Implementation**:
+  - Created `frontend/src/lib/yellow.ts` (481 lines) - Full WebSocket client
+  - Created `frontend/src/hooks/useYellow.ts` (267 lines) - React hook
+  - Features:
+    - WebSocket connection management with `isConnecting` flag
+    - Automatic reconnection with exponential backoff
+    - Heartbeat/keepalive mechanism
+    - JSON-RPC message handling
+    - Event-driven architecture with typed callbacks
+    - `methodToType()` mapping for ClearNode RPC methods
+    - Manual disconnect handling with `isManualDisconnect` flag
+  - Integrated with `page.tsx` - Yellow connection status shown in UI
+
+### 14. Critical Security Fixes (Code Review Feedback)
+- **Goal**: Address security vulnerabilities identified by CodeRabbit/Greptile
+- **Vulnerability 1: Integer Overflow in Contract**
+  - **Location**: `contracts/contracts/SessionSettlement.sol` - `_calculateAndValidateBatch()`
+  - **Problem**: Batch amount sum could overflow
+  - **Fix**: Added `unchecked` block with explicit overflow check
+  - **New Error**: `BatchAmountOverflow()` custom error
+  - **Test Added**: Overflow protection test case
+  
+- **Vulnerability 2: Race Condition in Approval Flow**
+  - **Location**: `frontend/src/hooks/useSettlement.ts` - `approveUSDC()`
+  - **Problem**: Allowance was checked before approval tx was mined
+  - **Fix**: Added `waitForTransactionReceipt()` with 1 confirmation
+  - **Also Fixed**: Settlement functions now wait for confirmation too
+
+- **Additional Security Enhancements**:
+  - Added `_validateAllowance()` helper in contract
+  - Pre-validate allowance BEFORE state changes in `finalizeSession` and `finalizeSessionBatch`
+  - Added `InsufficientAllowance(required, available)` custom error
+  - Added `usePublicClient` hook for transaction confirmation
+
+### 15. Backend tx_hash Preservation
+- **Location**: `backend/src/services/session.rs` - `finalize()`
+- **Problem**: tx_hash was being overwritten with None
+- **Fix**: Only set `session.tx_hash` when `tx_hash` param is `Some(value)`
+
+### 16. Test Suite Updates
+- **Contract Tests**: 27 passing (was 25)
+  - Added: Overflow protection test
+  - Updated: InsufficientAllowance tests to use custom error
+
+### Summary of Session 3 Accomplishments
+1. **Yellow Network Integration**: WebSocket client + React hook (40% complete)
+2. **Security Fix**: Integer overflow protection with `unchecked` block + custom error
+3. **Security Fix**: Race condition in approval flow with tx confirmation wait
+4. **Security Fix**: Pre-validate allowance before state changes
+5. **Backend Fix**: Preserve existing tx_hash in finalize
+6. **Tests**: 27 passing contract tests
+
+### PR #11 Merged
+- All code review feedback addressed
+- All CI checks passing
+- Branch: `feat/deploy-and-settlement` → `main`
+
+---
+
+## Current Project Status (As of February 4, 2026 - End of Session 3)
+
+### Overall Completion: ~85%
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Smart Contracts | 100% ✅ | Deployed + security hardened |
+| Frontend | 90% ✅ | Settlement + Yellow UI |
+| Backend | 70% ✅ | Shared state + tx_hash |
+| SDK Integration | 40% ~ | Yellow WebSocket client done |
+| Testing & QA | 50% ✅ | 27 contract tests |
+| Documentation | 80% ✅ | Updated |
+| Deployment | 80% ✅ | Contracts deployed |
+
+### Remaining Critical Work
+1. **Yellow ClearNode Integration** (Need real server URL)
+2. LI.FI quote display in UI
+3. Frontend/Backend deployment to hosting
+4. End-to-end testing
+
+### Security Fixes Completed
+| Fix | Location | Status |
+|-----|----------|--------|
+| Integer overflow | Contract `_calculateAndValidateBatch` | ✅ |
+| Race condition | `useSettlement.ts` approval flow | ✅ |
+| Allowance pre-validation | Contract `finalizeSession*` | ✅ |
+| tx_hash preservation | Backend `finalize()` | ✅ |
+| WebSocket guards | `lib/yellow.ts` | ✅ |
+
+### Deployed Contracts
+
+| Contract | Address | Network |
+|----------|---------|---------|
+| SessionSettlement | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` | Base Sepolia |
+| MockUSDC | `0xc5c8977491c2dc822F4f738356ec0231F7100f52` | Base Sepolia |
+
+### Build Status
+- **Frontend**: `pnpm build` ✅
+- **Backend**: `cargo test` ✅ (4 tests)
+- **Contracts**: `pnpm test` ✅ (27 tests)

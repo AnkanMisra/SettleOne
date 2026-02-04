@@ -1,6 +1,6 @@
 # SettleOne – Architecture Overview
 
-**Last Updated**: February 4, 2026
+**Last Updated**: February 4, 2026 (Session 3)
 
 SettleOne is composed of four core layers:
 
@@ -8,8 +8,9 @@ SettleOne is composed of four core layers:
 - Connects wallet using wagmi/viem with MetaMask or Phantom
 - Resolves ENS names via viem provider
 - Displays LI.FI cross-chain quotes
-- Opens Yellow Network session and manages payments
+- **Yellow Network WebSocket client for off-chain payments** (NEW)
 - **Executes on-chain settlement via `useSettlement` hook**
+- **Transaction confirmation with `waitForTransactionReceipt`** (Security fix)
 - Supports Base, Base Sepolia, Ethereum, and other EVM chains
 
 ## 2. Backend (Rust + Axum)
@@ -17,7 +18,7 @@ SettleOne is composed of four core layers:
 - **Shared `AppState` with `Arc<SessionStore>` for session persistence**
 - ENS resolution service (caches results)
 - LI.FI API proxy for cross-chain quotes
-- Yellow SDK integration for off-chain state (TODO)
+- **tx_hash preservation in finalize** (Bug fix)
 - Async/await architecture with Tokio runtime
 
 **Tech Stack:**
@@ -30,7 +31,7 @@ SettleOne is composed of four core layers:
 ## 3. Smart Contracts (Base Sepolia - Solidity)
 - **SessionSettlement.sol**: Main settlement contract
 - **ISessionSettlement.sol**: Interface definitions
-- **SessionErrors.sol**: Custom error library
+- **SessionErrors.sol**: Custom error library (with security errors)
 - **SessionTypes.sol**: Shared type definitions
 - **MockUSDC.sol**: Test mock for USDC
 
@@ -38,12 +39,15 @@ SettleOne is composed of four core layers:
 - SessionSettlement: `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2`
 - MockUSDC: `0xc5c8977491c2dc822F4f738356ec0231F7100f52`
 
-**Features:**
+**Security Features:**
 - Single and batch settlement support
 - Custom errors for gas efficiency
-- Reentrancy protection
+- Reentrancy protection (OpenZeppelin)
 - Owner-controlled emergency functions
 - Event emission for indexing
+- **Integer overflow protection** (unchecked block + custom error)
+- **Pre-validation of allowance** before state changes
+- **InsufficientAllowance** and **BatchAmountOverflow** errors
 
 ## 4. External Integrations
 
@@ -82,12 +86,12 @@ SettleOne is composed of four core layers:
 
 ### External SDKs & APIs
 
-| Integration | Purpose | Rust Crate |
-|------------|---------|------------|
-| **Yellow Network** | Off-chain session management | TBD |
-| **ENS** | Human-readable addresses | alloy (pending) |
-| **LI.FI** | Cross-chain routing | reqwest (HTTP) |
-| **Circle Gateway** | Gasless USDC transfers | reqwest (HTTP) |
+| Integration | Purpose | Status |
+|------------|---------|--------|
+| **Yellow Network** | Off-chain session management | WebSocket client built |
+| **ENS** | Human-readable addresses | ✅ Working (viem) |
+| **LI.FI** | Cross-chain routing | ✅ Backend API working |
+| **Circle Gateway** | Gasless USDC transfers | Pending |
 
 ## Data Flow
 
@@ -120,3 +124,7 @@ SettleOne is composed of four core layers:
 - Smart contract uses reentrancy guards
 - Custom errors prevent information leakage
 - Rate limiting on API endpoints
+- **Integer overflow protection** in batch calculations
+- **Allowance pre-validation** before state changes
+- **Transaction confirmation** before proceeding in frontend
+- **WebSocket connection guards** prevent duplicate connections
