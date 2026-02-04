@@ -72,6 +72,7 @@ export class YellowSession {
   private config: YellowSessionConfig;
   private sessionId: string | null = null;
   private isConnected = false;
+  private isConnecting = false;
   private isManualDisconnect = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
@@ -85,8 +86,29 @@ export class YellowSession {
    * Connect to Yellow Network ClearNode
    */
   async connect(): Promise<void> {
-    // Reset manual disconnect flag when establishing a new connection
+    // Guard: Return early if already connected or connection in progress
+    if (this.isConnected) {
+      console.log('[Yellow] Already connected');
+      return;
+    }
+    if (this.isConnecting) {
+      console.log('[Yellow] Connection already in progress');
+      return;
+    }
+
+    // Close any existing stale WebSocket
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent triggering reconnect
+      this.ws.onerror = null;
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.close();
+      this.ws = null;
+    }
+
+    // Reset flags for new connection
     this.isManualDisconnect = false;
+    this.isConnecting = true;
     
     return new Promise((resolve, reject) => {
       try {
@@ -94,6 +116,7 @@ export class YellowSession {
 
         this.ws.onopen = () => {
           this.isConnected = true;
+          this.isConnecting = false;
           this.reconnectAttempts = 0;
           console.log('[Yellow] Connected to ClearNode');
           this.config.onConnect?.();
@@ -117,6 +140,7 @@ export class YellowSession {
           this.config.onError?.(err);
           if (!this.isConnected) {
             // Clean up WebSocket before rejecting
+            this.isConnecting = false;
             if (this.ws) {
               this.ws.onclose = null; // Prevent reconnect attempt
               this.ws.close();
@@ -128,11 +152,13 @@ export class YellowSession {
 
         this.ws.onclose = () => {
           this.isConnected = false;
+          this.isConnecting = false;
           console.log('[Yellow] Disconnected from ClearNode');
           this.config.onDisconnect?.();
           this.attemptReconnect();
         };
       } catch (err) {
+        this.isConnecting = false;
         reject(err);
       }
     });
@@ -178,12 +204,22 @@ export class YellowSession {
   private methodToType(method: string): YellowMessage['type'] {
     switch (method) {
       case 'create_app_session':
+      case 'app_session_created':
         return 'session_created';
+      case 'submit_app_state':
+      case 'state_update':
+      case 'app_state_update':
+        return 'state_update';
+      case 'submit_payment':
+      case 'payment':
+      case 'payment_received':
+        return 'payment';
       case 'error':
         return 'error';
       case 'auth_challenge':
         return 'auth_challenge';
       case 'auth_verify':
+      case 'auth_verified':
         return 'auth_verified';
       default:
         return 'session_message';
@@ -196,14 +232,21 @@ export class YellowSession {
   disconnect(): void {
     // Set flag to prevent automatic reconnection
     this.isManualDisconnect = true;
+    this.isConnecting = false;
     
     if (this.ws) {
+      // Remove handlers to prevent any callbacks
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
       this.ws.close();
       this.ws = null;
     }
     this.isConnected = false;
     this.sessionId = null;
     this.payments = [];
+    this.reconnectAttempts = 0;
   }
 
   /**
@@ -406,6 +449,12 @@ export class YellowSession {
     // Don't reconnect if disconnect was called manually
     if (this.isManualDisconnect) {
       console.log('[Yellow] Skipping reconnect - manual disconnect');
+      return;
+    }
+
+    // Don't reconnect if a connection is already in progress
+    if (this.isConnecting) {
+      console.log('[Yellow] Skipping reconnect - connection in progress');
       return;
     }
     

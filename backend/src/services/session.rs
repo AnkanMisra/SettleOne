@@ -55,6 +55,7 @@ impl SessionStore {
     }
 
     /// Finalize session with status and optional tx_hash
+    /// Only updates tx_hash if a value is provided (preserves existing tx_hash otherwise)
     pub async fn finalize(
         &self,
         session_id: &str,
@@ -64,7 +65,10 @@ impl SessionStore {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
             session.status = status;
-            session.tx_hash = tx_hash;
+            // Only update tx_hash if a new value is provided
+            if let Some(hash) = tx_hash {
+                session.tx_hash = Some(hash);
+            }
             return Some(session.clone());
         }
         None
