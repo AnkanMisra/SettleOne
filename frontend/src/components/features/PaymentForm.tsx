@@ -56,7 +56,8 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
           amount: amountInBaseUnits,
         });
       } catch {
-        // Invalid amount format, ignore
+        // Invalid amount format, clear any stale quote
+        clearQuote();
       }
     },
     500
@@ -69,7 +70,8 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
     } else {
       clearQuote();
     }
-  }, [amount, fromChainId, toChainId, isCrossChain, debouncedFetchQuote, clearQuote]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, fromChainId, toChainId, isCrossChain]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -113,6 +113,7 @@ export class YellowSession {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private stateVersion = 0;
   private pendingAuthResolve: (() => void) | null = null;
+  private pendingAuthReject: ((error: Error) => void) | null = null;
   private pendingSessionResolve: ((sessionId: string) => void) | null = null;
 
   constructor(config: YellowSessionConfig) {
@@ -203,6 +204,7 @@ export class YellowSession {
           this.isConnected = false;
           this.isConnecting = false;
           this.isAuthenticated = false;
+          this.stopHeartbeat();
           console.log('[Yellow] Disconnected from ClearNode');
           this.config.onDisconnect?.();
           this.attemptReconnect();
@@ -249,12 +251,16 @@ export class YellowSession {
     console.log('[Yellow] Auth request sent');
 
     // Wait for auth to complete (handled in handleMessage)
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       this.pendingAuthResolve = resolve;
+      this.pendingAuthReject = reject;
       // Timeout after 30 seconds
       setTimeout(() => {
         if (this.pendingAuthResolve) {
+          const error = new Error('Authentication timeout');
+          this.pendingAuthReject?.(error);
           this.pendingAuthResolve = null;
+          this.pendingAuthReject = null;
           console.warn('[Yellow] Auth timeout');
         }
       }, 30000);
@@ -523,56 +529,55 @@ export class YellowSession {
     this.sessionId = requestIdString;
     this.stateVersion = 0;
 
-    // Wait for session confirmation with timeout
-    return new Promise((resolve) => {
-      this.pendingSessionResolve = resolve;
-      // Resolve immediately for demo (ClearNode will confirm async)
-      setTimeout(() => {
-        if (this.pendingSessionResolve) {
-          this.pendingSessionResolve(this.sessionId!);
-          this.pendingSessionResolve = null;
-        }
-      }, 100);
-    });
+    // Return immediately for demo (ClearNode will confirm async)
+    // The session ID is set locally; actual confirmation comes via handleMessage
+    return requestIdString;
   }
 
   /**
    * Fallback session creation without SDK
    */
   private async createSessionFallback(partnerAddress: string, requestId: string): Promise<void> {
-    if (!this.ws) return;
+    if (!this.ws) {
+      throw new Error('WebSocket not connected');
+    }
 
-    const appDefinition = {
-      protocol: 'settleone-payment-v1',
-      participants: [this.config.userAddress, partnerAddress],
-      weights: [100, 0],
-      quorum: 100,
-      challenge: 0,
-      nonce: Date.now(),
-    };
+    try {
+      const appDefinition = {
+        protocol: 'settleone-payment-v1',
+        participants: [this.config.userAddress, partnerAddress],
+        weights: [100, 0],
+        quorum: 100,
+        challenge: 0,
+        nonce: Date.now(),
+      };
 
-    const allocations = [
-      { participant: this.config.userAddress, asset: 'usdc', amount: '0' },
-      { participant: partnerAddress, asset: 'usdc', amount: '0' },
-    ];
+      const allocations = [
+        { participant: this.config.userAddress, asset: 'usdc', amount: '0' },
+        { participant: partnerAddress, asset: 'usdc', amount: '0' },
+      ];
 
-    const rpcMessage = {
-      jsonrpc: '2.0',
-      id: requestId,
-      method: 'create_app_session',
-      params: { definition: appDefinition, allocations },
-    };
+      const rpcMessage = {
+        jsonrpc: '2.0',
+        id: requestId,
+        method: 'create_app_session',
+        params: { definition: appDefinition, allocations },
+      };
 
-    const messageToSign = JSON.stringify(rpcMessage);
-    const signature = await this.config.messageSigner(messageToSign);
+      const messageToSign = JSON.stringify(rpcMessage);
+      const signature = await this.config.messageSigner(messageToSign);
 
-    const signedMessage = {
-      ...rpcMessage,
-      signature,
-      sender: this.config.userAddress,
-    };
+      const signedMessage = {
+        ...rpcMessage,
+        signature,
+        sender: this.config.userAddress,
+      };
 
-    this.ws.send(JSON.stringify(signedMessage));
+      this.ws.send(JSON.stringify(signedMessage));
+    } catch (err) {
+      console.error('[Yellow] Fallback session creation failed:', err);
+      throw err instanceof Error ? err : new Error(String(err));
+    }
   }
 
   /**

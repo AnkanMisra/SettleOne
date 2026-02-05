@@ -71,7 +71,7 @@ export function QuoteDisplay({
   const fromNum = parseFloat(fromAmount);
   const toNum = parseFloat(toAmount);
   const fee = fromNum - toNum;
-  const feePercent = ((fee / fromNum) * 100).toFixed(2);
+  const feePercent = fromNum > 0 ? ((fee / fromNum) * 100).toFixed(2) : '0.00';
 
   return (
     <div className="p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-xl">

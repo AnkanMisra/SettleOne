@@ -7,7 +7,8 @@ import { useCallback, useRef, useEffect, useState } from 'react';
  * The debounced function will delay invoking the callback until after
  * `delay` milliseconds have elapsed since the last time it was invoked.
  */
-export function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useDebouncedCallback<T extends (...args: any[]) => void>(
   callback: T,
   delay: number
 ): (...args: Parameters<T>) => void {
