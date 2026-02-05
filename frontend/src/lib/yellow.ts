@@ -212,6 +212,12 @@ export class YellowSession {
           this.stopHeartbeat();
           console.log('[Yellow] Disconnected from ClearNode');
 
+          // Reset all session state unconditionally to avoid stale state on reconnect
+          this.sessionId = null;
+          this.appSessionId = null;
+          this.partnerAddress = null;
+          this.isSessionConfirmed = false;
+
           // Reject any pending promises on disconnect
           if (this.pendingAuthReject) {
             this.pendingAuthReject(new Error('WebSocket disconnected during authentication'));
@@ -222,9 +228,6 @@ export class YellowSession {
             this.pendingSessionReject(new Error('WebSocket disconnected during session creation'));
             this.pendingSessionResolve = null;
             this.pendingSessionReject = null;
-            // Clear session state on disconnect
-            this.sessionId = null;
-            this.partnerAddress = null;
           }
 
           this.config.onDisconnect?.();

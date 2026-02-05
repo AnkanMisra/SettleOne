@@ -53,11 +53,39 @@ export function QuoteDisplay({
     );
   }
 
+  // Safe BigInt parser - returns null on invalid input
+  const safeParseBigInt = (value: string | undefined | null): bigint | null => {
+    if (!value || typeof value !== 'string') return null;
+    // Validate numeric string (only digits, optionally with leading zeros)
+    if (!/^\d+$/.test(value)) return null;
+    try {
+      return BigInt(value);
+    } catch {
+      return null;
+    }
+  };
+
   // Format amounts (USDC has 6 decimals)
-  const fromAmount = formatUnits(BigInt(quote.from_amount), 6);
-  const toAmount = formatUnits(BigInt(quote.to_amount), 6);
-  const gasEstimate = quote.estimated_gas
-    ? formatUnits(BigInt(quote.estimated_gas), 18)
+  const fromAmountBigInt = safeParseBigInt(quote.from_amount);
+  const toAmountBigInt = safeParseBigInt(quote.to_amount);
+  const gasEstimateBigInt = safeParseBigInt(quote.estimated_gas);
+
+  // If parsing fails, show error state
+  if (fromAmountBigInt === null || toAmountBigInt === null) {
+    return (
+      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+        <div className="flex items-start gap-2">
+          <span className="text-red-400 font-medium">Quote Error:</span>
+          <span className="text-red-300 text-sm">Invalid quote data received</span>
+        </div>
+      </div>
+    );
+  }
+
+  const fromAmount = formatUnits(fromAmountBigInt, 6);
+  const toAmount = formatUnits(toAmountBigInt, 6);
+  const gasEstimate = gasEstimateBigInt !== null
+    ? formatUnits(gasEstimateBigInt, 18)
     : null;
 
   // Calculate estimated time in human-readable format
