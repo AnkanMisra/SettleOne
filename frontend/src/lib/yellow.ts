@@ -754,6 +754,7 @@ export class YellowSession {
    * Close the current session
    * Returns final state for on-chain settlement
    * Only clears local state after successful close
+   * Requires appSessionId to ensure server-client session consistency
    */
   async closeSession(): Promise<{ payments: YellowPayment[]; totalSent: bigint }> {
     if (!this.ws || !this.isConnected) {
@@ -762,6 +763,10 @@ export class YellowSession {
 
     if (!this.sessionId) {
       throw new Error('No active session');
+    }
+
+    if (!this.appSessionId) {
+      throw new Error('No confirmed app session ID - cannot close unconfirmed session');
     }
 
     const timestamp = Date.now();
@@ -797,30 +802,28 @@ export class YellowSession {
       });
     }
 
-    // Attempt to close via SDK
-    if (this.appSessionId) {
-      try {
-        const sdkSigner = this.createSdkSigner();
+    // Close via SDK - required since we have appSessionId
+    try {
+      const sdkSigner = this.createSdkSigner();
 
-        const closeParams: CloseAppSessionRequestParams = {
-          app_session_id: this.appSessionId,
-          allocations: finalAllocations,
-        };
+      const closeParams: CloseAppSessionRequestParams = {
+        app_session_id: this.appSessionId,
+        allocations: finalAllocations,
+      };
 
-        const signedMessage = await createCloseAppSessionMessage(
-          sdkSigner,
-          closeParams,
-          timestamp,
-          timestamp
-        );
+      const signedMessage = await createCloseAppSessionMessage(
+        sdkSigner,
+        closeParams,
+        timestamp,
+        timestamp
+      );
 
-        this.ws.send(signedMessage);
-        console.log('[Yellow] Close session request sent');
-      } catch (err) {
-        console.error('[Yellow] Failed to close session with SDK:', err);
-        // Don't clear state on SDK failure - let caller decide
-        throw new Error(`Failed to close session: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      this.ws.send(signedMessage);
+      console.log('[Yellow] Close session request sent');
+    } catch (err) {
+      console.error('[Yellow] Failed to close session with SDK:', err);
+      // Don't clear state on SDK failure - let caller decide
+      throw new Error(`Failed to close session: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // Only clear local state after successful close request
@@ -921,6 +924,21 @@ export class YellowSession {
 
       case 'error':
         console.error('[Yellow] Error:', message.error);
+        // Reject any pending promises on error
+        if (this.pendingAuthReject) {
+          this.pendingAuthReject(new Error(message.error || 'Authentication failed'));
+          this.pendingAuthResolve = null;
+          this.pendingAuthReject = null;
+        }
+        if (this.pendingSessionReject) {
+          this.pendingSessionReject(new Error(message.error || 'Session creation failed'));
+          this.pendingSessionResolve = null;
+          this.pendingSessionReject = null;
+          // Clear session state on error
+          this.sessionId = null;
+          this.partnerAddress = null;
+        }
+        this.config.onError?.(new Error(message.error || 'Unknown error'));
         break;
 
       case 'pong':
