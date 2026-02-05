@@ -31,6 +31,8 @@ export interface UseYellowReturn {
   payments: YellowPayment[];
   totalSent: bigint;
   stateVersion: number;
+  partnerAddress: string | null;
+  isSessionConfirmed: boolean;
 
   // Actions
   connect: () => Promise<void>;
@@ -64,6 +66,8 @@ export function useYellow(): UseYellowReturn {
     payments: [],
     totalSent: BigInt(0),
     stateVersion: 0,
+    partnerAddress: null,
+    isSessionConfirmed: false,
   });
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [lastMessage, setLastMessage] = useState<YellowMessage | null>(null);
@@ -169,6 +173,8 @@ export function useYellow(): UseYellowReturn {
       payments: [],
       totalSent: BigInt(0),
       stateVersion: 0,
+      partnerAddress: null,
+      isSessionConfirmed: false,
     });
     setLastMessage(null);
   }, []);
@@ -293,6 +299,8 @@ export function useYellow(): UseYellowReturn {
     payments: sessionState.payments,
     totalSent: sessionState.totalSent,
     stateVersion: sessionState.stateVersion,
+    partnerAddress: sessionState.partnerAddress,
+    isSessionConfirmed: sessionState.isSessionConfirmed,
 
     // Actions
     connect,

@@ -92,6 +92,8 @@ export interface YellowSessionState {
   payments: YellowPayment[];
   totalSent: bigint;
   stateVersion: number;
+  partnerAddress: string | null;
+  isSessionConfirmed: boolean;
 }
 
 /**
@@ -115,6 +117,9 @@ export class YellowSession {
   private pendingAuthResolve: (() => void) | null = null;
   private pendingAuthReject: ((error: Error) => void) | null = null;
   private pendingSessionResolve: ((sessionId: string) => void) | null = null;
+  private pendingSessionReject: ((error: Error) => void) | null = null;
+  private partnerAddress: string | null = null;
+  private isSessionConfirmed = false;
 
   constructor(config: YellowSessionConfig) {
     this.config = config;
@@ -429,6 +434,8 @@ export class YellowSession {
     this.isAuthenticated = false;
     this.sessionId = null;
     this.appSessionId = null;
+    this.partnerAddress = null;
+    this.isSessionConfirmed = false;
     this.payments = [];
     this.stateVersion = 0;
     this.reconnectAttempts = 0;
@@ -465,6 +472,7 @@ export class YellowSession {
 
   /**
    * Create a new payment session on Yellow Network
+   * Waits for ClearNode confirmation before resolving
    */
   async createSession(partnerAddress: string): Promise<string> {
     if (!this.ws || !this.isConnected) {
@@ -476,6 +484,9 @@ export class YellowSession {
       console.log('[Yellow] Authenticating before session creation...');
       await this.authenticate();
     }
+
+    // Store partner address for recipient validation
+    this.partnerAddress = partnerAddress.toLowerCase();
 
     const timestamp = Date.now();
     const requestIdNumeric = timestamp;
@@ -509,6 +520,11 @@ export class YellowSession {
 
     const sessionParams = { definition, allocations };
 
+    // Set local session ID before sending request
+    this.sessionId = requestIdString;
+    this.stateVersion = 0;
+    this.isSessionConfirmed = false;
+
     try {
       const signedMessage = await createAppSessionMessage(
         sdkSigner,
@@ -524,14 +540,28 @@ export class YellowSession {
       await this.createSessionFallback(partnerAddress, requestIdString);
     }
 
-    // Set local session ID immediately for demo
-    // In production, wait for ClearNode confirmation
-    this.sessionId = requestIdString;
-    this.stateVersion = 0;
+    // Wait for session confirmation with timeout
+    return new Promise<string>((resolve, reject) => {
+      this.pendingSessionResolve = (sessionId: string) => {
+        this.isSessionConfirmed = true;
+        resolve(sessionId);
+      };
+      this.pendingSessionReject = reject;
 
-    // Return immediately for demo (ClearNode will confirm async)
-    // The session ID is set locally; actual confirmation comes via handleMessage
-    return requestIdString;
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (this.pendingSessionResolve) {
+          const error = new Error('Session creation timeout');
+          this.pendingSessionReject?.(error);
+          this.pendingSessionResolve = null;
+          this.pendingSessionReject = null;
+          // Clear session state on timeout
+          this.sessionId = null;
+          this.partnerAddress = null;
+          console.warn('[Yellow] Session creation timeout');
+        }
+      }, 30000);
+    });
   }
 
   /**
@@ -593,21 +623,35 @@ export class YellowSession {
       throw new Error('No active session');
     }
 
+    if (!this.isSessionConfirmed) {
+      throw new Error('Session not yet confirmed by ClearNode');
+    }
+
+    // Validate recipient matches session partner (state channel constraint)
+    const normalizedRecipient = recipient.toLowerCase();
+    if (this.partnerAddress && normalizedRecipient !== this.partnerAddress) {
+      throw new Error(
+        `Recipient must match session partner. Expected: ${this.partnerAddress}, got: ${normalizedRecipient}`
+      );
+    }
+
     const timestamp = Date.now();
     this.stateVersion++;
+
+    // Calculate cumulative total sent to recipient (including this payment)
+    const newTotalSent = this.payments.reduce(
+      (sum, p) => sum + BigInt(p.amount),
+      BigInt(0)
+    ) + BigInt(amount);
 
     // If we have an app session ID from ClearNode, use SDK method
     if (this.appSessionId) {
       try {
         const sdkSigner = this.createSdkSigner();
 
-        // Calculate new allocations after payment
-        const currentTotal = this.payments.reduce(
-          (sum, p) => sum + BigInt(p.amount),
-          BigInt(0)
-        );
-        const newTotal = currentTotal + BigInt(amount);
-
+        // State channel allocations: what each party is entitled to on settlement
+        // Sender: 0 (they're paying out, not receiving anything back)
+        // Recipient: cumulative total received
         const stateParams = {
           app_session_id: this.appSessionId,
           intent: RPCAppStateIntent.Operate,
@@ -616,18 +660,19 @@ export class YellowSession {
             {
               participant: this.config.userAddress as Address,
               asset: 'usdc',
-              amount: newTotal.toString(),
+              amount: '0', // Sender's entitlement is 0 (paying out)
             },
             {
               participant: recipient as Address,
               asset: 'usdc',
-              amount: amount,
+              amount: newTotalSent.toString(), // Recipient's cumulative total
             },
           ],
           session_data: JSON.stringify({
             type: 'payment',
             recipient,
             amount,
+            cumulative_total: newTotalSent.toString(),
             timestamp,
           }),
         };
@@ -643,14 +688,15 @@ export class YellowSession {
         console.log('[Yellow] Payment sent via SDK');
       } catch (err) {
         console.error('[Yellow] SDK payment failed, using fallback:', err);
-        await this.sendPaymentFallback(recipient, amount, timestamp);
+        await this.sendPaymentFallback(recipient, amount, newTotalSent.toString(), timestamp);
       }
     } else {
       // Use fallback if no app session ID yet
-      await this.sendPaymentFallback(recipient, amount, timestamp);
+      await this.sendPaymentFallback(recipient, amount, newTotalSent.toString(), timestamp);
     }
 
-    // Track payment locally
+    // Track payment locally (optimistic - recorded before server confirmation)
+    // In production, would wait for server acknowledgment
     this.payments.push({
       recipient,
       amount,
@@ -658,13 +704,18 @@ export class YellowSession {
       timestamp,
     });
 
-    console.log('[Yellow] Payment recorded:', amount, 'to', recipient);
+    console.log('[Yellow] Payment recorded (optimistic):', amount, 'to', recipient);
   }
 
   /**
    * Fallback payment without SDK
    */
-  private async sendPaymentFallback(recipient: string, amount: string, timestamp: number): Promise<void> {
+  private async sendPaymentFallback(
+    recipient: string,
+    amount: string,
+    cumulativeTotal: string,
+    timestamp: number
+  ): Promise<void> {
     if (!this.ws) return;
 
     const paymentData = {
@@ -675,10 +726,16 @@ export class YellowSession {
         sessionId: this.sessionId,
         type: 'payment',
         amount,
+        cumulative_total: cumulativeTotal,
         recipient,
         asset: 'usdc',
         version: this.stateVersion,
         timestamp,
+        // Include proper allocations in fallback too
+        allocations: [
+          { participant: this.config.userAddress, asset: 'usdc', amount: '0' },
+          { participant: recipient, asset: 'usdc', amount: cumulativeTotal },
+        ],
       },
     };
 
@@ -696,6 +753,7 @@ export class YellowSession {
   /**
    * Close the current session
    * Returns final state for on-chain settlement
+   * Only clears local state after successful close
    */
   async closeSession(): Promise<{ payments: YellowPayment[]; totalSent: bigint }> {
     if (!this.ws || !this.isConnected) {
@@ -714,28 +772,32 @@ export class YellowSession {
       BigInt(0)
     );
 
-    // Aggregate by recipient
-    const recipientTotals = new Map<string, bigint>();
-    for (const payment of this.payments) {
-      const current = recipientTotals.get(payment.recipient) || BigInt(0);
-      recipientTotals.set(payment.recipient, current + BigInt(payment.amount));
+    // Prepare result before any network operations
+    const result = {
+      payments: [...this.payments],
+      totalSent,
+    };
+
+    // Build final allocations: sender gets 0, recipient gets total
+    // For our payment channel, allocations represent what each party receives on settlement
+    const finalAllocations: RPCAppSessionAllocation[] = [
+      {
+        participant: this.config.userAddress as Address,
+        asset: 'usdc',
+        amount: '0', // Sender's entitlement: 0 (they paid out)
+      },
+    ];
+
+    // Add recipient allocation (should be partnerAddress)
+    if (this.partnerAddress) {
+      finalAllocations.push({
+        participant: this.partnerAddress as Address,
+        asset: 'usdc',
+        amount: totalSent.toString(), // Recipient gets cumulative total
+      });
     }
 
-    const finalAllocations: RPCAppSessionAllocation[] = Array.from(recipientTotals.entries()).map(
-      ([participant, amt]) => ({
-        participant: participant as Address,
-        asset: 'usdc',
-        amount: amt.toString(),
-      })
-    );
-
-    // Add sender's remaining allocation
-    finalAllocations.unshift({
-      participant: this.config.userAddress as Address,
-      asset: 'usdc',
-      amount: totalSent.toString(),
-    });
-
+    // Attempt to close via SDK
     if (this.appSessionId) {
       try {
         const sdkSigner = this.createSdkSigner();
@@ -756,17 +818,16 @@ export class YellowSession {
         console.log('[Yellow] Close session request sent');
       } catch (err) {
         console.error('[Yellow] Failed to close session with SDK:', err);
+        // Don't clear state on SDK failure - let caller decide
+        throw new Error(`Failed to close session: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
-    const result = {
-      payments: [...this.payments],
-      totalSent,
-    };
-
-    // Clear local state
+    // Only clear local state after successful close request
     this.sessionId = null;
     this.appSessionId = null;
+    this.partnerAddress = null;
+    this.isSessionConfirmed = false;
     this.payments = [];
     this.stateVersion = 0;
 
@@ -790,6 +851,8 @@ export class YellowSession {
       payments: [...this.payments],
       totalSent,
       stateVersion: this.stateVersion,
+      partnerAddress: this.partnerAddress,
+      isSessionConfirmed: this.isSessionConfirmed,
     };
   }
 
@@ -832,11 +895,13 @@ export class YellowSession {
       case 'session_created':
         if (message.sessionId) {
           this.appSessionId = message.sessionId as Hex;
+          this.isSessionConfirmed = true;
           console.log('[Yellow] Session confirmed:', this.appSessionId);
         }
         if (this.pendingSessionResolve) {
           this.pendingSessionResolve(this.sessionId || message.sessionId || '');
           this.pendingSessionResolve = null;
+          this.pendingSessionReject = null;
         }
         break;
 
