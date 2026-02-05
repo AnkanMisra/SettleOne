@@ -211,6 +211,22 @@ export class YellowSession {
           this.isAuthenticated = false;
           this.stopHeartbeat();
           console.log('[Yellow] Disconnected from ClearNode');
+
+          // Reject any pending promises on disconnect
+          if (this.pendingAuthReject) {
+            this.pendingAuthReject(new Error('WebSocket disconnected during authentication'));
+            this.pendingAuthResolve = null;
+            this.pendingAuthReject = null;
+          }
+          if (this.pendingSessionReject) {
+            this.pendingSessionReject(new Error('WebSocket disconnected during session creation'));
+            this.pendingSessionResolve = null;
+            this.pendingSessionReject = null;
+            // Clear session state on disconnect
+            this.sessionId = null;
+            this.partnerAddress = null;
+          }
+
           this.config.onDisconnect?.();
           this.attemptReconnect();
         };
@@ -261,7 +277,8 @@ export class YellowSession {
       this.pendingAuthReject = reject;
       // Timeout after 30 seconds
       setTimeout(() => {
-        if (this.pendingAuthResolve) {
+        // Only reject if still pending AND not already authenticated
+        if (this.pendingAuthResolve && !this.isAuthenticated) {
           const error = new Error('Authentication timeout');
           this.pendingAuthReject?.(error);
           this.pendingAuthResolve = null;
@@ -297,7 +314,14 @@ export class YellowSession {
       console.log('[Yellow] Auth verify sent');
     } catch (err) {
       console.error('[Yellow] Failed to respond to auth challenge:', err);
-      this.config.onError?.(err instanceof Error ? err : new Error(String(err)));
+      const error = err instanceof Error ? err : new Error(String(err));
+      // Reject pending auth promise immediately on challenge failure
+      if (this.pendingAuthReject) {
+        this.pendingAuthReject(error);
+        this.pendingAuthResolve = null;
+        this.pendingAuthReject = null;
+      }
+      this.config.onError?.(error);
     }
   }
 
@@ -537,7 +561,17 @@ export class YellowSession {
       console.log('[Yellow] Create session request sent');
     } catch (err) {
       console.error('[Yellow] Failed to create session with SDK, using fallback:', err);
-      await this.createSessionFallback(partnerAddress, requestIdString);
+      try {
+        await this.createSessionFallback(partnerAddress, requestIdString);
+      } catch (fallbackErr) {
+        // Both SDK and fallback failed - reject immediately
+        console.error('[Yellow] Fallback session creation also failed:', fallbackErr);
+        const error = fallbackErr instanceof Error ? fallbackErr : new Error(String(fallbackErr));
+        // Clear session state since creation failed
+        this.sessionId = null;
+        this.partnerAddress = null;
+        throw error;
+      }
     }
 
     // Wait for session confirmation with timeout
@@ -550,7 +584,8 @@ export class YellowSession {
 
       // Timeout after 30 seconds
       setTimeout(() => {
-        if (this.pendingSessionResolve) {
+        // Only reject if still pending AND session not already confirmed
+        if (this.pendingSessionResolve && !this.isSessionConfirmed) {
           const error = new Error('Session creation timeout');
           this.pendingSessionReject?.(error);
           this.pendingSessionResolve = null;
@@ -892,6 +927,7 @@ export class YellowSession {
         if (this.pendingAuthResolve) {
           this.pendingAuthResolve();
           this.pendingAuthResolve = null;
+          this.pendingAuthReject = null; // Clean up reject handler too
         }
         break;
 

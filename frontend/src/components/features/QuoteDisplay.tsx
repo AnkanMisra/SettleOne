@@ -67,11 +67,12 @@ export function QuoteDisplay({
     return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
   };
 
-  // Calculate fee/slippage
+  // Calculate fee/slippage (can be negative if recipient gets bonus)
   const fromNum = parseFloat(fromAmount);
   const toNum = parseFloat(toAmount);
   const fee = fromNum - toNum;
   const feePercent = fromNum > 0 ? ((fee / fromNum) * 100).toFixed(2) : '0.00';
+  const isBonus = fee < 0; // Recipient gets more than sender pays (promotional, rebate, etc.)
 
   return (
     <div className="p-4 bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-xl">
@@ -103,9 +104,11 @@ export function QuoteDisplay({
 
         {/* Fee info */}
         <div className="flex items-center justify-between">
-          <span className="text-gray-400 text-sm">Bridge fee</span>
-          <span className="text-yellow-400 text-sm">
-            {fee.toFixed(4)} USDC ({feePercent}%)
+          <span className="text-gray-400 text-sm">
+            {isBonus ? 'Bonus' : 'Bridge fee'}
+          </span>
+          <span className={isBonus ? 'text-green-400 text-sm' : 'text-yellow-400 text-sm'}>
+            {isBonus ? '+' : ''}{Math.abs(fee).toFixed(4)} USDC ({isBonus ? '+' : ''}{feePercent}%)
           </span>
         </div>
 
