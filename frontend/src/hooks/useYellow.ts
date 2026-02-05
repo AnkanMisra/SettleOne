@@ -21,19 +21,25 @@ export interface UseYellowReturn {
   // Connection state
   isConnected: boolean;
   isConnecting: boolean;
+  isAuthenticated: boolean;
   connectionError: string | null;
 
   // Session state
   sessionId: string | null;
+  appSessionId: string | null;
   isCreatingSession: boolean;
   payments: YellowPayment[];
   totalSent: bigint;
+  stateVersion: number;
+  partnerAddress: string | null;
+  isSessionConfirmed: boolean;
 
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
   createSession: (partnerAddress: string) => Promise<string | null>;
   sendPayment: (recipient: string, amount: string) => Promise<boolean>;
+  closeSession: () => Promise<{ payments: YellowPayment[]; totalSent: bigint } | null>;
   getPaymentsForSettlement: () => Array<{ recipient: string; amount: bigint }>;
 
   // Events
@@ -54,9 +60,14 @@ export function useYellow(): UseYellowReturn {
   // Session state
   const [sessionState, setSessionState] = useState<YellowSessionState>({
     sessionId: null,
+    appSessionId: null,
     isConnected: false,
+    isAuthenticated: false,
     payments: [],
     totalSent: BigInt(0),
+    stateVersion: 0,
+    partnerAddress: null,
+    isSessionConfirmed: false,
   });
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [lastMessage, setLastMessage] = useState<YellowMessage | null>(null);
@@ -156,9 +167,14 @@ export function useYellow(): UseYellowReturn {
     setIsConnected(false);
     setSessionState({
       sessionId: null,
+      appSessionId: null,
       isConnected: false,
+      isAuthenticated: false,
       payments: [],
       totalSent: BigInt(0),
+      stateVersion: 0,
+      partnerAddress: null,
+      isSessionConfirmed: false,
     });
     setLastMessage(null);
   }, []);
@@ -234,6 +250,33 @@ export function useYellow(): UseYellowReturn {
     return sessionRef.current.getPaymentsForSettlement();
   }, []);
 
+  /**
+   * Close the current session and return final state for settlement
+   */
+  const closeSession = useCallback(async (): Promise<{ payments: YellowPayment[]; totalSent: bigint } | null> => {
+    if (!sessionRef.current || !isConnected) {
+      setConnectionError('Not connected to Yellow Network');
+      return null;
+    }
+
+    if (!sessionState.sessionId) {
+      setConnectionError('No active session');
+      return null;
+    }
+
+    try {
+      const result = await sessionRef.current.closeSession();
+      setSessionState(sessionRef.current.getState());
+      return result;
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to close session';
+      setConnectionError(message);
+      console.error('[useYellow] Close session error:', err);
+      return null;
+    }
+  }, [isConnected, sessionState.sessionId]);
+
   // Auto-connect when wallet connects
   useEffect(() => {
     if (walletConnected && address && walletClient && !isConnected && !isConnecting) {
@@ -246,19 +289,25 @@ export function useYellow(): UseYellowReturn {
     // Connection state
     isConnected,
     isConnecting,
+    isAuthenticated: sessionState.isAuthenticated,
     connectionError,
 
     // Session state
     sessionId: sessionState.sessionId,
+    appSessionId: sessionState.appSessionId,
     isCreatingSession,
     payments: sessionState.payments,
     totalSent: sessionState.totalSent,
+    stateVersion: sessionState.stateVersion,
+    partnerAddress: sessionState.partnerAddress,
+    isSessionConfirmed: sessionState.isSessionConfirmed,
 
     // Actions
     connect,
     disconnect,
     createSession,
     sendPayment,
+    closeSession,
     getPaymentsForSettlement,
 
     // Events
