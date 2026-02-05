@@ -1,6 +1,6 @@
 # Sponsor Integration – SettleOne
 
-**Last Updated**: February 4, 2026 (Session 3)
+**Last Updated**: February 5, 2026 (Session 5)
 
 SettleOne qualifies for the following ETHGlobal HackMoney 2026 sponsor tracks:
 
@@ -12,34 +12,29 @@ SettleOne qualifies for the following ETHGlobal HackMoney 2026 sponsor tracks:
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| Yellow SDK integrated | **READY** | ClearNode endpoint discovered! |
-| Session-based payment flow | **MET** | UI + hook working |
-| Off-chain → on-chain settlement | **READY** | Architecture ready |
+| Yellow SDK integrated | **MET** ✅ | @erc7824/nitrolite fully integrated |
+| Session-based payment flow | **MET** ✅ | Full session lifecycle working |
+| Off-chain → on-chain settlement | **MET** ✅ | Complete flow implemented |
 
-**Discovery (Session 4)**:
-Found official ClearNode WebSocket endpoints:
+**Full Implementation (Session 5)**:
+- `frontend/src/lib/yellow.ts` - Full SDK integration (1023 lines)
+  - `createSdkSigner()` - SDK-compatible message signer
+  - `createAuthRequestMessage()` - Authentication flow
+  - `createAuthVerifyMessageFromChallenge()` - Challenge response
+  - `createAppSessionMessage()` - Session creation with SDK types
+  - `createSubmitAppStateMessage()` - Payment state updates
+  - `createCloseAppSessionMessage()` - Session close
+  - `createPingMessageV2()` - Heartbeat
+  - `parseAnyRPCResponse()` - Message parsing
+- `frontend/src/hooks/useYellow.ts` - React hook with full state management
+
+**ClearNode Endpoints**:
 ```
 Production: wss://clearnet.yellow.com/ws
 Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 ```
 
-**SDK Package**:
-```bash
-pnpm add @erc7824/nitrolite
-```
-
-**Implementation**:
-- `frontend/src/lib/yellow.ts` - Full WebSocket client (481 lines)
-  - Connection management with `isConnecting` guard
-  - Automatic reconnection with exponential backoff
-  - JSON-RPC message handling
-  - ClearNode RPC method mapping
-- `frontend/src/hooks/useYellow.ts` - React hook (267 lines)
-  - Session state management
-  - Payment tracking
-  - UI integration
-
-**Next Step**: Update WebSocket URL to sandbox endpoint and install SDK
+**Code Review Score**: Greptile 5/5 - "Production-ready for hackathon scope"
 
 ---
 
@@ -89,17 +84,18 @@ pnpm add @erc7824/nitrolite
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| LI.FI API integrated | **MET** | Backend LifiService |
-| Cross-chain routing | **PARTIAL** | API works, UI pending |
-| Quote display working | **PARTIAL** | Hook exists, UI integration pending |
+| LI.FI API integrated | **MET** ✅ | Backend LifiService |
+| Cross-chain routing | **MET** ✅ | API works, UI displays quotes |
+| Quote display working | **MET** ✅ | QuoteDisplay component complete |
 
-**Implementation:**
+**Implementation**:
 - `backend/src/services/lifi.rs` - API client with quote fetching
-- `frontend/src/hooks/useQuote.ts` - React hook (not yet in UI)
-
-**Remaining:**
-- Display quotes in PaymentForm component
-- Show fees and estimated time
+- `frontend/src/hooks/useQuote.ts` - React hook with debouncing
+- `frontend/src/components/features/QuoteDisplay.tsx` - Quote display UI
+  - Shows "You send" / "Recipient gets" breakdown
+  - Bridge fee calculation with percentage
+  - Negative fee handling (shows as "Bonus")
+  - Gas estimate and time display
 
 ---
 
@@ -109,14 +105,15 @@ SettleOne is a **four-track-qualified project**, designed for high technical val
 
 | Track | Compliance | Notes |
 |-------|------------|-------|
-| Yellow Network | **95%** | ClearNode endpoint found! SDK ready to install |
-| Circle / Arc | 100% | Deployed + security hardened |
-| ENS | 100% | Full resolution working |
-| LI.FI | 70% | Backend done, UI next step |
+| Yellow Network | **100%** ✅ | Full SDK integration, 5/5 review score |
+| Circle / Arc | **100%** ✅ | Deployed + security hardened |
+| ENS | **100%** ✅ | Full resolution working |
+| LI.FI | **95%** ✅ | Backend + UI complete |
 
-**Overall Sponsor Compliance: ~90%**
+**Overall Sponsor Compliance: ~99%**
 
-**Next Steps**:
-1. Update Yellow WebSocket URL to ClearNode sandbox
-2. Install `@erc7824/nitrolite` SDK
-3. Add LI.FI quote display to PaymentForm
+**Completed**:
+1. ✅ Yellow SDK fully integrated with @erc7824/nitrolite
+2. ✅ ClearNode WebSocket connection working
+3. ✅ LI.FI quote display in PaymentForm
+4. ✅ All code review issues addressed (Greptile 5/5)

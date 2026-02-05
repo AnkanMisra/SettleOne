@@ -1,6 +1,6 @@
 # Demo Guide – SettleOne
 
-**Last Updated**: February 4, 2026 (Session 3)
+**Last Updated**: February 5, 2026 (Session 5)
 
 This guide explains how to demo SettleOne for judges.
 
@@ -38,20 +38,23 @@ This guide explains how to demo SettleOne for judges.
 
 ### 2. Start a Session
 - Click "Start Session" button
-- This creates an off-chain session for batching payments
-- Yellow Network status indicator appears (if connected)
+- This creates an off-chain Yellow Network session
+- **Yellow Network status indicator appears showing connection**
+- Session is confirmed by ClearNode before proceeding
 
 ### 3. Add Payments
 - Click "Add Payment"
 - Enter recipient's ENS name (e.g., `vitalik.eth`) or address
 - Enter amount in USDC
-- Select source/destination chains (optional for cross-chain)
+- Select source/destination chains for cross-chain transfers
+- **Cross-chain quote displays automatically** (fees, time, gas)
 - Submit payment
 
 ### 4. Review Session
 - See all pending payments in session card
 - Total amount calculated automatically
 - Each payment shows recipient and amount
+- **Yellow session state tracked in real-time**
 
 ### 5. Settle On-Chain
 - Click "Settle All" button
@@ -64,10 +67,24 @@ This guide explains how to demo SettleOne for judges.
 
 ## What to Highlight for Judges
 
-### Yellow Network Integration
+### Yellow Network Integration (Full SDK)
 - Show Yellow connection status in UI
-- Explain off-chain payment batching
-- Demonstrate instant payment confirmation before settlement
+- Explain @erc7824/nitrolite SDK integration
+- Demonstrate:
+  - Authentication with challenge-response
+  - Session creation with ClearNode confirmation
+  - State channel payments with proper allocations
+  - Session close with settlement data
+- **Mention Greptile 5/5 code review score**
+
+### Cross-Chain Quote Display (LI.FI)
+- Select different source/destination chains
+- Show quote breakdown:
+  - "You send" / "Recipient gets"
+  - Bridge fees with percentage
+  - Gas estimate
+  - Estimated time
+- Demonstrate negative fee handling (shows as "Bonus")
 
 ### ENS Integration
 - Type `vitalik.eth` and show address resolution
@@ -83,6 +100,8 @@ This guide explains how to demo SettleOne for judges.
 - Mention integer overflow protection
 - Mention allowance pre-validation
 - Mention transaction confirmation waiting
+- Mention safe BigInt parsing
+- Mention WebSocket disconnect handling
 
 ## Demo Video
 Length: 2-3 minutes  

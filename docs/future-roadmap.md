@@ -1,6 +1,6 @@
 # Smart Contracts – SettleOne
 
-**Last Updated**: February 4, 2026 (Session 3)
+**Last Updated**: February 5, 2026 (Session 5)
 
 SettleOne uses a single Base Sepolia smart contract for secure finalization of off-chain sessions.
 

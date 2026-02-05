@@ -1,14 +1,18 @@
 # SettleOne – Architecture Overview
 
-**Last Updated**: February 4, 2026 (Session 3)
+**Last Updated**: February 5, 2026 (Session 5)
 
 SettleOne is composed of four core layers:
 
 ## 1. Frontend (Next.js + React)
 - Connects wallet using wagmi/viem with MetaMask or Phantom
 - Resolves ENS names via viem provider
-- Displays LI.FI cross-chain quotes
-- **Yellow Network WebSocket client for off-chain payments** (NEW)
+- Displays LI.FI cross-chain quotes with QuoteDisplay component
+- **Yellow Network SDK integration with @erc7824/nitrolite** (COMPLETE)
+  - Full authentication flow with challenge-response
+  - Session creation with ClearNode confirmation
+  - State channel payments with proper allocations
+  - Session close with settlement data
 - **Executes on-chain settlement via `useSettlement` hook**
 - **Transaction confirmation with `waitForTransactionReceipt`** (Security fix)
 - Supports Base, Base Sepolia, Ethereum, and other EVM chains
@@ -88,9 +92,9 @@ SettleOne is composed of four core layers:
 
 | Integration | Purpose | Status |
 |------------|---------|--------|
-| **Yellow Network** | Off-chain session management | WebSocket client built |
+| **Yellow Network** | Off-chain session management | ✅ SDK fully integrated |
 | **ENS** | Human-readable addresses | ✅ Working (viem) |
-| **LI.FI** | Cross-chain routing | ✅ Backend API working |
+| **LI.FI** | Cross-chain routing | ✅ Backend + UI complete |
 | **Circle Gateway** | Gasless USDC transfers | Pending |
 
 ## Data Flow
