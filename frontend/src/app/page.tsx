@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useChainId } from 'wagmi';
 import { parseUnits } from 'viem';
+import toast from 'react-hot-toast';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
 import { PaymentForm } from '@/components/features/PaymentForm';
@@ -104,7 +105,7 @@ export default function Home() {
 
     const contractAddress = getContractAddress();
     if (!contractAddress) {
-      alert(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
+      toast.error(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
       return;
     }
 
@@ -148,7 +149,15 @@ export default function Home() {
         
         // Show success with block explorer link
         const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`;
-        alert(`Settlement complete!\n\nTransaction: ${hash.slice(0, 10)}...${hash.slice(-8)}\n\nView on explorer: ${explorerUrl}`);
+        toast.success(
+          `Settlement complete! TX: ${hash.slice(0, 10)}...${hash.slice(-8)}`,
+          {
+            duration: 8000,
+            style: { cursor: 'pointer' },
+          }
+        );
+        // Open explorer in new tab for easy access
+        window.open(explorerUrl, '_blank');
       } else {
         setSettlementStatus('Settlement failed');
         setViewMode('home');
