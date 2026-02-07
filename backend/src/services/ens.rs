@@ -60,6 +60,11 @@ impl EnsService {
     }
 
     /// Validate an ENS name format
+    ///
+    /// Only enforces that the name ends with `.eth` and the primary label
+    /// (the part directly before `.eth`) is at least 3 characters.
+    /// Subdomains (e.g. `sub.name.eth`) and unicode/punycode names are
+    /// allowed — the upstream resolver will reject truly invalid names.
     fn validate_name(name: &str) -> Result<(), EnsError> {
         if !name.ends_with(".eth") {
             return Err(EnsError::InvalidName(
@@ -67,20 +72,20 @@ impl EnsService {
             ));
         }
 
-        let label = name.trim_end_matches(".eth");
-        if label.len() < 3 {
+        // The primary label is the part immediately before `.eth`.
+        // For "sub.name.eth" the primary label is "name".
+        let without_tld = name.trim_end_matches(".eth");
+        let primary_label = without_tld.rsplit('.').next().unwrap_or(without_tld);
+
+        if primary_label.len() < 3 {
             return Err(EnsError::InvalidName(
-                "ENS label must be at least 3 characters".to_string(),
+                "ENS primary label must be at least 3 characters".to_string(),
             ));
         }
 
-        // Basic character validation
-        if !label
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
+        if without_tld.is_empty() {
             return Err(EnsError::InvalidName(
-                "ENS label contains invalid characters".to_string(),
+                "ENS name cannot be empty before .eth".to_string(),
             ));
         }
 
@@ -177,16 +182,12 @@ impl EnsService {
     }
 
     /// Resolve via ENS subgraph (The Graph)
+    ///
+    /// Uses GraphQL variables to avoid injection via the `name` parameter.
     async fn resolve_via_subgraph(&self, name: &str) -> Result<EnsResult, EnsError> {
         let query = serde_json::json!({
-            "query": format!(
-                r#"{{
-                    domains(where: {{ name: "{}" }}) {{
-                        resolvedAddress {{ id }}
-                    }}
-                }}"#,
-                name
-            )
+            "query": "query($name: String!) { domains(where: { name: $name }) { resolvedAddress { id } } }",
+            "variables": { "name": name }
         });
 
         let response = self
@@ -208,7 +209,16 @@ impl EnsService {
             .await
             .map_err(|e| EnsError::ResolutionFailed(format!("Failed to parse response: {}", e)))?;
 
-        let address = data["data"]["domains"][0]["resolvedAddress"]["id"]
+        // Safely access the domains array — .get(0) returns None on empty arrays
+        let domains = data["data"]["domains"]
+            .as_array()
+            .ok_or_else(|| EnsError::NotFound(name.to_string()))?;
+
+        let first = domains
+            .first()
+            .ok_or_else(|| EnsError::NotFound(name.to_string()))?;
+
+        let address = first["resolvedAddress"]["id"]
             .as_str()
             .ok_or_else(|| EnsError::NotFound(name.to_string()))?;
 
@@ -245,8 +255,30 @@ impl EnsService {
         );
     }
 
+    /// Validate that a string is a well-formed Ethereum address (0x + 40 hex chars)
+    fn validate_address(address: &str) -> Result<(), EnsError> {
+        if address.len() != 42 {
+            return Err(EnsError::InvalidName(
+                "Address must be 42 characters (0x + 40 hex digits)".to_string(),
+            ));
+        }
+        if !address.starts_with("0x") {
+            return Err(EnsError::InvalidName(
+                "Address must start with 0x".to_string(),
+            ));
+        }
+        if !address[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(EnsError::InvalidName(
+                "Address contains non-hex characters".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Reverse lookup: address to ENS name
     pub async fn reverse_lookup(&self, address: &str) -> Result<Option<String>, EnsError> {
+        Self::validate_address(address)?;
+
         let addr_lower = address.to_lowercase();
 
         // Check reverse cache first
@@ -326,16 +358,20 @@ mod tests {
         assert!(EnsService::validate_name("vitalik.eth").is_ok());
         assert!(EnsService::validate_name("my-name.eth").is_ok());
         assert!(EnsService::validate_name("abc.eth").is_ok());
+        // Subdomains should be accepted
+        assert!(EnsService::validate_name("sub.name.eth").is_ok());
+        // Unicode / punycode names should be accepted
+        assert!(EnsService::validate_name("xn--nxasmq6b.eth").is_ok());
     }
 
     #[test]
     fn test_validate_name_invalid() {
         // Missing .eth
         assert!(EnsService::validate_name("vitalik").is_err());
-        // Too short
+        // Primary label too short
         assert!(EnsService::validate_name("ab.eth").is_err());
-        // Invalid characters
-        assert!(EnsService::validate_name("hello world.eth").is_err());
+        // Just .eth with no label
+        assert!(EnsService::validate_name(".eth").is_err());
     }
 
     #[tokio::test]
@@ -379,5 +415,25 @@ mod tests {
             .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some("test.eth".to_string()));
+    }
+
+    #[test]
+    fn test_validate_address_valid() {
+        assert!(EnsService::validate_address("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045").is_ok());
+        assert!(EnsService::validate_address("0x0000000000000000000000000000000000000000").is_ok());
+    }
+
+    #[test]
+    fn test_validate_address_invalid() {
+        // Too short
+        assert!(EnsService::validate_address("0x1234").is_err());
+        // Missing 0x prefix
+        assert!(EnsService::validate_address("d8dA6BF26964aF9D7eEd9e03E53415D37aA960450").is_err());
+        // Non-hex characters
+        assert!(
+            EnsService::validate_address("0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ").is_err()
+        );
+        // Arbitrary string
+        assert!(EnsService::validate_address("not-an-address").is_err());
     }
 }

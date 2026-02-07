@@ -19,7 +19,7 @@ Today's DeFi ecosystem struggles with high gas fees for small or frequent paymen
 
 ## Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                       USER BROWSER                            │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -109,7 +109,7 @@ pnpm test
 ### Environment Variables
 
 #### Backend (`backend/.env`)
-```
+```ini
 PORT=3001
 ETH_RPC_URL=https://eth.llamarpc.com
 LIFI_API_URL=https://li.quest/v1
@@ -117,7 +117,7 @@ LIFI_API_KEY=your_key_here
 ```
 
 #### Frontend (`frontend/.env.local`)
-```
+```ini
 NEXT_PUBLIC_API_URL=http://localhost:3001
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 ```
@@ -132,7 +132,7 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 
 ## Project Structure
 
-```
+```text
 SettleOne/
 ├── frontend/          # Next.js 16 + React 19 frontend
 │   ├── src/

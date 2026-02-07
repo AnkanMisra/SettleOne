@@ -148,9 +148,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_session() {
-        let state = create_test_state();
-        let app = create_app(state.clone());
-        let server = TestServer::new(app).unwrap();
+        let server = create_test_server();
 
         // Create session first
         let create_resp = server
@@ -185,9 +183,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_payment() {
-        let state = create_test_state();
-        let app = create_app(state.clone());
-        let server = TestServer::new(app).unwrap();
+        let server = create_test_server();
 
         // Create session
         let create_resp = server
@@ -248,9 +244,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_finalize_session() {
-        let state = create_test_state();
-        let app = create_app(state.clone());
-        let server = TestServer::new(app).unwrap();
+        let server = create_test_server();
 
         // Create session
         let create_resp = server
