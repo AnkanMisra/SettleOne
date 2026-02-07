@@ -39,8 +39,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # UUID for session IDs
 uuid = { version = "1.0", features = ["v4", "serde"] }
 
-# TODO: Add alloy for Web3 interactions when stable
-# alloy = { version = "0.1", features = ["full"] }
+# ENS resolution uses ensdata.net API + ENS subgraph (no alloy dependency needed)
 
 [dev-dependencies]
 tokio-test = "0.4"

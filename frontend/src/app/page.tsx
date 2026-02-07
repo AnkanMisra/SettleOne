@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useChainId } from 'wagmi';
 import { parseUnits } from 'viem';
+import toast from 'react-hot-toast';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
 import { PaymentForm } from '@/components/features/PaymentForm';
@@ -12,6 +13,18 @@ import { useYellow } from '@/hooks/useYellow';
 import { SESSION_SETTLEMENT_ADDRESSES } from '@/lib/contracts';
 
 type ViewMode = 'home' | 'payment' | 'approving' | 'settling';
+
+/** Map chain ID to block explorer base URL */
+function getExplorerUrl(chainId: number, hash: string): string {
+  const explorers: Record<number, string> = {
+    84532: 'https://sepolia.basescan.org',   // Base Sepolia
+    8453: 'https://basescan.org',            // Base Mainnet
+    1: 'https://etherscan.io',               // Ethereum
+    11155111: 'https://sepolia.etherscan.io', // Sepolia
+  };
+  const base = explorers[chainId] || 'https://sepolia.basescan.org';
+  return `${base}/tx/${hash}`;
+}
 
 export default function Home() {
   const { isConnected } = useAccount();
@@ -104,7 +117,7 @@ export default function Home() {
 
     const contractAddress = getContractAddress();
     if (!contractAddress) {
-      alert(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
+      toast.error(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
       return;
     }
 
@@ -146,9 +159,26 @@ export default function Home() {
         setSettlementStatus('');
         setViewMode('home');
         
-        // Show success with block explorer link
-        const explorerUrl = `https://sepolia.basescan.org/tx/${hash}`;
-        alert(`Settlement complete!\n\nTransaction: ${hash.slice(0, 10)}...${hash.slice(-8)}\n\nView on explorer: ${explorerUrl}`);
+        // Show success with block explorer link (clickable toast)
+        const explorerUrl = getExplorerUrl(chainId, hash);
+        toast.success(
+          (t) => (
+            <span
+              onClick={() => {
+                window.open(explorerUrl, '_blank');
+                toast.dismiss(t.id);
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              Settlement complete! TX: {hash.slice(0, 10)}...{hash.slice(-8)}
+              <br />
+              <span style={{ fontSize: '0.75rem', textDecoration: 'underline' }}>
+                View on explorer ↗
+              </span>
+            </span>
+          ),
+          { duration: 8000 }
+        );
       } else {
         setSettlementStatus('Settlement failed');
         setViewMode('home');
