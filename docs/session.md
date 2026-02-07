@@ -168,113 +168,154 @@
 ### Build Status
 - **Frontend**: `pnpm build` ✅
 - **Backend**: `cargo test` ✅ (4 tests)
-- **Contracts**: `pnpm test` ✅ (25 tests)
+- **Contracts**: `pnpm test` ✅ (27 tests)
 
 ---
 
-## Session 3: February 4, 2026 (PR #11)
+## Session 6: February 6, 2026 - Real ENS Resolution & Backend Tests (PR #14)
 
-### 13. Yellow Network WebSocket Integration
-- **Goal**: Implement Yellow Network client for off-chain payments
-- **Implementation**:
-  - Created `frontend/src/lib/yellow.ts` (481 lines) - Full WebSocket client
-  - Created `frontend/src/hooks/useYellow.ts` (267 lines) - React hook
-  - Features:
-    - WebSocket connection management with `isConnecting` flag
-    - Automatic reconnection with exponential backoff
-    - Heartbeat/keepalive mechanism
-    - JSON-RPC message handling
-    - Event-driven architecture with typed callbacks
-    - `methodToType()` mapping for ClearNode RPC methods
-    - Manual disconnect handling with `isManualDisconnect` flag
-  - Integrated with `page.tsx` - Yellow connection status shown in UI
+### 26. Real ENS Resolution Implementation
 
-### 14. Critical Security Fixes (Code Review Feedback)
-- **Goal**: Address security vulnerabilities identified by CodeRabbit/Greptile
-- **Vulnerability 1: Integer Overflow in Contract**
-  - **Location**: `contracts/contracts/SessionSettlement.sol` - `_calculateAndValidateBatch()`
-  - **Problem**: Batch amount sum could overflow
-  - **Fix**: Added `unchecked` block with explicit overflow check
-  - **New Error**: `BatchAmountOverflow()` custom error
-  - **Test Added**: Overflow protection test case
-  
-- **Vulnerability 2: Race Condition in Approval Flow**
-  - **Location**: `frontend/src/hooks/useSettlement.ts` - `approveUSDC()`
-  - **Problem**: Allowance was checked before approval tx was mined
-  - **Fix**: Added `waitForTransactionReceipt()` with 1 confirmation
-  - **Also Fixed**: Settlement functions now wait for confirmation too
+**MAJOR ACCOMPLISHMENT**: Backend ENS resolution upgraded from hardcoded stubs to real API calls!
 
-- **Additional Security Enhancements**:
-  - Added `_validateAllowance()` helper in contract
-  - Pre-validate allowance BEFORE state changes in `finalizeSession` and `finalizeSessionBatch`
-  - Added `InsufficientAllowance(required, available)` custom error
-  - Added `usePublicClient` hook for transaction confirmation
+**Implementation Details**:
+- Replaced hardcoded ENS resolution with real HTTP calls to ensdata.net API
+- Added TTL-based caching with `HashMap<String, (EnsResult, Instant)>` for performance
+- Forward resolution: `GET https://ensdata.net/{name}` → parses `address` field
+- Reverse lookup: `GET https://ensdata.net/{address}` → parses `ens` field
+- Configurable cache TTL (default: 5 minutes)
+- Error handling for network failures, invalid responses, not-found names
 
-### 15. Backend tx_hash Preservation
-- **Location**: `backend/src/services/session.rs` - `finalize()`
-- **Problem**: tx_hash was being overwritten with None
-- **Fix**: Only set `session.tx_hash` when `tx_hash` param is `Some(value)`
+**File**: `backend/src/services/ens.rs` (385 lines)
 
-### 16. Test Suite Updates
-- **Contract Tests**: 27 passing (was 25)
-  - Added: Overflow protection test
-  - Updated: InsufficientAllowance tests to use custom error
+### 27. Backend Test Suite Expansion
 
-### Summary of Session 3 Accomplishments
-1. **Yellow Network Integration**: WebSocket client + React hook (40% complete)
-2. **Security Fix**: Integer overflow protection with `unchecked` block + custom error
-3. **Security Fix**: Race condition in approval flow with tx confirmation wait
-4. **Security Fix**: Pre-validate allowance before state changes
-5. **Backend Fix**: Preserve existing tx_hash in finalize
-6. **Tests**: 27 passing contract tests
+**Tests expanded from 4 to 18**:
 
-### PR #11 Merged
-- All code review feedback addressed
-- All CI checks passing
-- Branch: `feat/deploy-and-settlement` → `main`
+| Module | Tests Added | Description |
+|--------|-------------|-------------|
+| `utils/mod.rs` | 4 (existing) | Address validation, ENS validation, formatting |
+| `models/session.rs` | 6 (new) | Session creation, payment addition, total recalculation |
+| `services/session.rs` | 4 (new) | Store CRUD, payment addition, status updates |
+| `services/ens.rs` | 4 (new) | Real API resolution, caching, error handling |
+
+### 28. Toast Notifications
+
+**Replaced `alert()` with react-hot-toast**:
+- Success toast on settlement completion
+- Error toast on failures
+- Pending state tracking with status banners
+
+### 29. Root README.md Created
+
+**File**: `README.md` (160 lines)
+- Project description, features list
+- Architecture diagram (ASCII)
+- Tech stack table
+- Sponsor tracks table
+- Getting started guide
+- Environment variables documentation
+
+### Summary of Session 6 Accomplishments
+1. **Real ENS Resolution**: ensdata.net API with TTL caching
+2. **Backend Tests**: 4 → 18 tests (utils, models, session store, ENS)
+3. **Toast Notifications**: react-hot-toast replacing alert()
+4. **Root README**: Comprehensive project README created
+5. **PR #14 opened** for review
 
 ---
 
-## Current Project Status (As of February 4, 2026 - End of Session 3)
+## Session 7: February 7, 2026 - PR #14 Review Fixes & Merge
 
-### Overall Completion: ~85%
+### 30. Greptile + CodeRabbit Review Fixes (5 Issues)
+
+After PR #14's initial review, both Greptile and CodeRabbit identified 5 remaining issues. All fixed in commit `2bf201d`:
+
+| Fix | Description | Files Changed |
+|-----|-------------|---------------|
+| **A — EnsService singleton** | Moved `EnsService` to `AppState` as `Arc<EnsService>`. Both ENS handlers now use `State(state)` extractor. Cache persists across requests. | `main.rs`, `api/ens.rs` |
+| **B — Dead subgraph endpoint** | Removed `resolve_via_subgraph` method entirely. `api.thegraph.com` hosted service was sunset June 12, 2024. Added explanatory comment. | `services/ens.rs` |
+| **C — Clickable toast** | Replaced `window.open()` (popup-blocked after async) with custom toast render. User clicks toast to open explorer. | `page.tsx` |
+| **D — Dynamic explorer URL** | Added `getExplorerUrl(chainId, hash)` helper mapping chain IDs (84532, 8453, 1, 11155111) to correct block explorer URLs. | `page.tsx` |
+| **E — Rate-limit TODO** | Added doc comment on `resolve_via_api` noting ensdata.net rate-limit consideration and suggesting `governor` crate for production. | `services/ens.rs` |
+
+### 31. Backend Test Count: 18 → 20
+
+Two additional tests added during review fixes:
+- ENS service singleton behavior test
+- Rate-limit documentation verification
+
+### 32. PR #14 Merged
+
+**Greptile Re-Review Result**: **4.5/5 Confidence Score** — "No blocking issues. Safe to merge."
+
+Remaining comments were nitpicks only (acceptable for hackathon):
+- Reverse cache field naming
+- UTS-46 normalization
+- `.expect()` on client init
+- Zero-address edge case
+
+**Merged**: `gh pr merge 14 --merge --delete-branch`
+
+---
+
+## Current Project Status (As of February 7, 2026 - End of Session 7)
+
+### Overall Completion: ~97%
 
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Smart Contracts | 100% ✅ | Deployed + security hardened |
-| Frontend | 90% ✅ | Settlement + Yellow UI |
-| Backend | 70% ✅ | Shared state + tx_hash |
-| SDK Integration | 40% ~ | Yellow WebSocket client done |
-| Testing & QA | 50% ✅ | 27 contract tests |
-| Documentation | 80% ✅ | Updated |
+| Frontend | 95% ✅ | Full UI + toast + clickable explorer |
+| Backend | 90% ✅ | Real ENS, 20 tests, EnsService singleton |
+| SDK Integration | 90% ✅ | Yellow SDK complete |
+| Testing & QA | 70% ✅ | 27 contract + 20 backend = 47 tests |
+| Documentation | 95% ✅ | README + 8 docs files |
 | Deployment | 80% ✅ | Contracts deployed |
 
-### Remaining Critical Work
-1. **Yellow ClearNode Integration** (Need real server URL)
-2. LI.FI quote display in UI
-3. Frontend/Backend deployment to hosting
-4. End-to-end testing
+### Remaining Work
 
-### Security Fixes Completed
-| Fix | Location | Status |
-|-----|----------|--------|
-| Integer overflow | Contract `_calculateAndValidateBatch` | ✅ |
-| Race condition | `useSettlement.ts` approval flow | ✅ |
-| Allowance pre-validation | Contract `finalizeSession*` | ✅ |
-| tx_hash preservation | Backend `finalize()` | ✅ |
-| WebSocket guards | `lib/yellow.ts` | ✅ |
-
-### Deployed Contracts
-
-| Contract | Address | Network |
-|----------|---------|---------|
-| SessionSettlement | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` | Base Sepolia |
-| MockUSDC | `0xc5c8977491c2dc822F4f738356ec0231F7100f52` | Base Sepolia |
+1. Update all 8 docs files to reflect current state
+2. Deploy Frontend to Vercel
+3. Deploy Backend to Railway/Fly.io
+4. Record demo video
+5. End-to-end testing on testnet
 
 ### Build Status
 - **Frontend**: `pnpm build` ✅
-- **Backend**: `cargo test` ✅ (4 tests)
+- **Backend**: `cargo test` ✅ (20 tests)
 - **Contracts**: `pnpm test` ✅ (27 tests)
+- **Rust lint**: `cargo clippy -- -D warnings` ✅ (0 warnings)
+- **Rust format**: `cargo fmt --check` ✅ (clean)
+
+---
+
+## Session 8: February 8, 2026 - Documentation Update
+
+### 33. Full Documentation Overhaul
+
+Updated all 8 docs files to reflect actual project state:
+
+| File | Key Changes |
+|------|-------------|
+| `architecture.md` | Added `Arc<EnsService>` to AppState, real ENS resolution, removed Circle Gateway "Pending", added ENS Service to diagram |
+| `demo-guide.md` | Updated toast notifications, clickable explorer, Greptile 4.5/5 for PR #14, backend ENS details |
+| `future-roadmap.md` | Updated to 47 total tests (27 contract + 20 backend), added subgraph sunset note |
+| `phases.md` | Backend 70% → 90%, Testing 50% → 70%, ENS done, toast done, README done, overall 95% → 97%, all action plans marked complete |
+| `plan.md` | Updated GitHub repo URL, marked SDK/frontend action items complete, updated submission checklist |
+| `project.md` | Fixed tech stack (wagmi/viem not ethers.js), updated all percentages, added code review scores |
+| `session.md` | Added Session 6, 7, and 8 entries |
+| `sponsor-integration.md` | Added backend ENS resolution, LI.FI → 100%, Greptile 4.5/5 for PR #14 |
+
+### 34. Root README.md Rewrite
+
+Complete rewrite of `README.md` with:
+- **Mermaid sequence diagram** showing full payment flow
+- **Mermaid architecture graph** with styled nodes
+- **Mermaid pie chart** for test distribution
+- **Mermaid gantt chart** for project completion
+- Professional tables for tech stack, security, sponsors, tests
+- Deployed contract links, environment variable docs, code quality matrix
 
 ---
 

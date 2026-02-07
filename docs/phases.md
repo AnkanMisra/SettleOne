@@ -1,7 +1,7 @@
 # SettleOne - Project Phases & Status Report
 
-**Last Updated**: February 5, 2026 (Session 5)  
-**Overall Completion**: ~95%  
+**Last Updated**: February 8, 2026 (Session 8)  
+**Overall Completion**: ~97%  
 **ETHGlobal HackMoney 2026**
 
 ---
@@ -26,7 +26,7 @@
 
 ## Executive Summary
 
-SettleOne is a cross-chain, identity-powered, gasless USDC payment platform. The project is approximately **95% complete** with smart contracts deployed, backend API functional, frontend connected to on-chain settlement, Yellow Network SDK fully integrated with @erc7824/nitrolite, and cross-chain quote display working.
+SettleOne is a cross-chain, identity-powered, gasless USDC payment platform. The project is approximately **97% complete** with smart contracts deployed, backend API functional with real ENS resolution (20 tests), frontend connected to on-chain settlement with toast notifications and clickable explorer links, Yellow Network SDK fully integrated with @erc7824/nitrolite, and cross-chain quote display working.
 
 ### Key Metrics
 
@@ -35,6 +35,7 @@ SettleOne is a cross-chain, identity-powered, gasless USDC payment platform. The
 | Total Files | 65+ |
 | Lines of Code | ~15,000 |
 | Contract Tests | 27 passing |
+| Backend Tests | 20 passing |
 | Frontend Build | Successful |
 | Backend Compilation | Successful (clean) |
 | Deployed Contracts | 2 (Base Sepolia) |
@@ -61,13 +62,13 @@ SettleOne is a cross-chain, identity-powered, gasless USDC payment platform. The
 │                                                                  │
 │  Smart Contracts    [████████████████████]  100% ✓ Deployed     │
 │  Frontend           [███████████████████░]  95%  ✓ Full UI      │
-│  Backend            [██████████████░░░░░░]  70%  ✓ State Done   │
+│  Backend            [██████████████████░░]  90%  ✓ Real ENS     │
 │  SDK Integration    [██████████████████░░]  90%  ✓ Yellow SDK   │
-│  Testing & QA       [██████████░░░░░░░░░░]  50%  ✓ 27 tests     │
-│  Documentation      [██████████████████░░]  90%  ✓ Updated      │
+│  Testing & QA       [██████████████░░░░░░]  70%  ✓ 47 tests     │
+│  Documentation      [███████████████████░]  95%  ✓ Updated      │
 │  Deployment         [████████████████░░░░]  80%  ✓ Base Sepolia │
 │                                                                  │
-│  OVERALL            [███████████████████░]  95%                 │
+│  OVERALL            [███████████████████░]  97%                 │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -212,7 +213,7 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 
 ## Phase 2: Frontend Application
 
-**Status**: 90% Complete ✅  
+**Status**: 95% Complete ✅  
 **Location**: `/frontend/`  
 **Build**: `pnpm build` - Successful  
 **Framework**: Next.js 16.1.6 + React 19.2.3
@@ -338,7 +339,7 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 - Base (8453)
 
 #### 2.9 Main Page
-**File**: `frontend/src/app/page.tsx` (224 lines)
+**File**: `frontend/src/app/page.tsx`
 
 - [x] Hero section with gradient text
 - [x] Connect wallet prompt for unauthenticated users
@@ -347,6 +348,9 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 - [x] Features grid (ENS Names, Instant, Low Fees)
 - [x] Sponsor badges in footer
 - [x] Dark theme with gradients
+- [x] **Toast notifications** (react-hot-toast) for success/error
+- [x] **Clickable toast** opens block explorer on click
+- [x] **Dynamic explorer URL** via `getExplorerUrl(chainId, hash)` helper
 
 #### 2.10 API Client
 **File**: `frontend/src/lib/api.ts`
@@ -395,19 +399,19 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 - [x] **Automatic approval before settlement**
 - [ ] **Approval amount UI** - Nice to have
 
-#### 2.15 LI.FI Quote Display
-- [ ] **Show quote in PaymentForm**
-- [ ] **Display fees and estimated time**
-- [ ] **Route visualization**
+#### 2.15 LI.FI Quote Display ✅ COMPLETE
+- [x] **Show quote in PaymentForm**
+- [x] **Display fees and estimated time**
+- [x] **Route visualization** - QuoteDisplay component
 
-**Note**: `useQuote` hook exists but not integrated into UI
+**Component**: `frontend/src/components/features/QuoteDisplay.tsx` (163 lines)
 
-#### 2.16 Toast Notifications
-- [ ] **Success notifications**
-- [ ] **Error notifications**
+#### 2.16 Toast Notifications ✅ COMPLETE
+- [x] **Success notifications** - react-hot-toast
+- [x] **Error notifications** - react-hot-toast
 - [x] **Transaction pending states** - Status banners added
-
-**Current**: Uses `alert()` for success messages
+- [x] **Clickable toast** - Opens block explorer on click
+- [x] **Dynamic explorer URL** - Chain-aware (Base Sepolia, Base, Ethereum, Sepolia)
 
 #### 2.17 Loading States
 - [x] **Settlement status banners** - "Approving...", "Settling..."
@@ -423,10 +427,10 @@ export const SESSION_SETTLEMENT_ADDRESSES = {
 
 ## Phase 3: Backend API Server
 
-**Status**: 70% Complete ✅  
+**Status**: 90% Complete ✅  
 **Location**: `/backend/`  
 **Build**: `cargo check` - Compiles successfully (clean)  
-**Tests**: `cargo test` - 4 tests passing  
+**Tests**: `cargo test` - 20 tests passing  
 **Framework**: Axum 0.7 + Tokio
 
 ### What's Done
@@ -556,20 +560,17 @@ dotenvy = "0.15"
 - [x] **State extractor in handlers** - All session handlers updated
 - [x] **Services initialized once** - Shared across requests
 
-#### 3.13 Real ENS Resolution
-**File**: `backend/src/services/ens.rs:40-56`
+#### 3.13 Real ENS Resolution ✅ COMPLETE
+**File**: `backend/src/services/ens.rs`
 
-```rust
-// CURRENT STATE - Only hardcoded + warning log!
-pub async fn resolve(&self, name: &str) -> Result<EnsResult, EnsError> {
-    // ...
-}
-```
+- [x] **Real ENS resolution via ensdata.net API** - Production HTTP API
+- [x] **TTL-based caching** - `HashMap<String, (EnsResult, Instant)>` with configurable TTL
+- [x] **EnsService singleton** - Shared via `Arc<EnsService>` in `AppState`
+- [x] **Both handlers use State extractor** - `resolve_ens` and `lookup_address`
+- [x] **Subgraph fallback removed** - Graph hosted service sunset June 2024
+- [x] **Rate-limit consideration documented** - `governor` crate suggested for production
 
-**NEEDED**:
-- [ ] Add `alloy` crate for Web3 RPC
-- [ ] Actual ENS contract calls
-- [ ] Caching layer for resolved names
+**Note**: Dead `resolve_via_subgraph` method was removed. Only `resolve_via_api()` (ensdata.net) is used.
 
 #### 3.14 Handler-Service Integration ✅ COMPLETE
 **File**: `backend/src/api/session.rs`
@@ -587,9 +588,8 @@ pub async fn resolve(&self, name: &str) -> Result<EnsResult, EnsError> {
 **Note**: On-chain settlement is now handled by frontend's `useSettlement` hook.
 
 #### 3.16 Yellow SDK Integration
-- [ ] **Research Yellow SDK Rust bindings**
-- [ ] **Implement session creation via Yellow**
-- [ ] **Off-chain payment tracking**
+- N/A — Yellow SDK is frontend-only (@erc7824/nitrolite). Backend does not need Yellow integration.
+- See Phase 4 for full Yellow SDK details.
 
 ---
 
@@ -691,7 +691,7 @@ Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 
 ## Phase 5: Testing & QA
 
-**Status**: 50% Complete
+**Status**: 70% Complete
 
 ### What's Done
 
@@ -709,12 +709,27 @@ Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 - [x] **Overflow protection tests** (NEW)
 - [x] **Allowance validation tests** (NEW)
 
-#### 5.2 Backend Utility Tests
-**File**: `backend/src/utils/mod.rs`
+#### 5.2 Backend Tests ✅ COMPLETE (20 tests)
 
+**Utility Tests** (`backend/src/utils/mod.rs`):
 - [x] `format_address` tests
 - [x] `is_valid_address` tests
 - [x] `is_valid_ens` tests
+
+**Model Tests** (`backend/src/models/session.rs`):
+- [x] Session creation tests
+- [x] Payment addition tests
+- [x] Total recalculation tests
+
+**Session Store Tests** (`backend/src/services/session.rs`):
+- [x] Store creation and retrieval tests
+- [x] Payment addition tests
+- [x] Status update tests
+
+**ENS Resolution Tests** (`backend/src/services/ens.rs`):
+- [x] Real API resolution tests (ensdata.net)
+- [x] Caching behavior tests
+- [x] Error handling tests
 
 ### What's NOT Done
 
@@ -745,7 +760,7 @@ Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 
 ## Phase 6: Documentation & Demo
 
-**Status**: 70% Complete
+**Status**: 95% Complete
 
 ### What's Done
 
@@ -757,8 +772,9 @@ Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 | `docs/project.md` | Project overview | ✓ Complete |
 | `docs/architecture.md` | System architecture | ✓ Complete |
 | `docs/sponsor-integration.md` | Sponsor requirements | ✓ Complete |
-| `docs/demo-guide.md` | Demo walkthrough | ✓ Draft |
-| `docs/future-roadmap.md` | Contract specs | ✓ Brief |
+| `docs/demo-guide.md` | Demo walkthrough | ✓ Updated |
+| `docs/future-roadmap.md` | Contract specs | ✓ Updated |
+| `docs/session.md` | Session log | ✓ Updated through Session 8 |
 
 #### 6.2 Code Documentation
 - [x] Rust doc comments in backend
@@ -767,17 +783,17 @@ Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 
 ### What's NOT Done
 
-#### 6.3 README.md (Root)
-- [ ] Project description
-- [ ] Features list
-- [ ] Tech stack overview
-- [ ] Quick start guide
-- [ ] Environment setup
-- [ ] Deployment instructions
-- [ ] Contributing guidelines
-- [ ] License
+#### 6.3 README.md (Root) ✅ COMPLETE
+- [x] Project description
+- [x] Features list
+- [x] Tech stack overview
+- [x] Quick start guide
+- [x] Environment setup
+- [x] Deployment instructions
+- [x] Sponsor track details
+- [x] Architecture overview
 
-**Current**: Only default Next.js README in frontend
+**File**: `README.md` (comprehensive root README created in Session 6)
 
 #### 6.4 Architecture Diagram
 - [ ] Create visual diagram (draw.io/Excalidraw)
@@ -884,7 +900,8 @@ YELLOW_API_KEY=             # Not set
 - Authentication flow with challenge-response
 - WebSocket disconnect handling
 - Race condition guards
-- **Greptile Review: 5/5 Confidence Score**
+- **Greptile Review: 5/5 Confidence Score (PR #13)**
+- **Greptile Review: 4.5/5 Confidence Score (PR #14)**
 
 ---
 
@@ -952,8 +969,12 @@ YELLOW_API_KEY=             # Not set
 6. ✅ Payment state updates via SDK
 7. ✅ Session close with proper cleanup
 8. ✅ All code review issues addressed
-9. ✅ **Greptile 5/5 confidence score**
+9. ✅ **Greptile 5/5 confidence score (PR #13)**
 10. ✅ **PR #13 merged to main**
+11. ✅ **Real ENS resolution with ensdata.net (Session 6)**
+12. ✅ **EnsService singleton in AppState (Session 7)**
+13. ✅ **Greptile 4.5/5 confidence score (PR #14)**
+14. ✅ **PR #14 merged to main**
 
 ---
 
@@ -988,44 +1009,32 @@ YELLOW_API_KEY=             # Not set
 | ~~Deploy to testnet~~ | ~~15 min~~ | ~~Testable contracts~~ | ~~P0~~ | ✅ Done |
 | ~~Display LI.FI quotes~~ | ~~1 hour~~ | ~~Sponsor requirement~~ | ~~P1~~ | ✅ Done |
 | ~~Yellow SDK integration~~ | ~~4 hours~~ | ~~Sponsor requirement~~ | ~~P0~~ | ✅ Done |
-| Add proper README | 20 min | Better presentation | P1 | Pending |
-| Add toast notifications | 30 min | Better UX | P2 | Pending |
+| ~~Add proper README~~ | ~~20 min~~ | ~~Better presentation~~ | ~~P1~~ | ✅ Done |
+| ~~Add toast notifications~~ | ~~30 min~~ | ~~Better UX~~ | ~~P2~~ | ✅ Done |
 | Deploy frontend to Vercel | 30 min | Live demo | P1 | Pending |
 
 ---
 
 ## Recommended Action Plan
 
-### Day 1: Critical Fixes (4-5 hours)
+### ~~Day 1: Critical Fixes~~ ✅ ALL COMPLETE
 
-| Order | Task | Time |
-|-------|------|------|
-| 1 | Wire up backend API routes | 30 min |
-| 2 | Add shared AppState to backend | 30 min |
-| 3 | Deploy contracts to Sepolia | 30 min |
-| 4 | Update frontend contract addresses | 15 min |
-| 5 | Add useContractWrite for settlement | 2 hours |
-| 6 | Add USDC approval flow | 1 hour |
+All tasks completed in Sessions 2-3.
 
-### Day 2: Yellow SDK Integration (4-6 hours)
+### ~~Day 2: Yellow SDK Integration~~ ✅ ALL COMPLETE
 
-| Order | Task | Time |
-|-------|------|------|
-| 1 | Research Yellow SDK documentation | 1 hour |
-| 2 | Install and configure SDK | 30 min |
-| 3 | Create lib/yellow.ts wrapper | 2 hours |
-| 4 | Integrate with session UI | 2 hours |
-| 5 | Test full session flow | 1 hour |
+All tasks completed in Sessions 4-5. Greptile 5/5 score on PR #13.
 
-### Day 3: Polish & Deployment (3-4 hours)
+### ~~Day 3: Polish & Deployment~~ ✅ MOSTLY COMPLETE
 
-| Order | Task | Time |
-|-------|------|------|
-| 1 | Display LI.FI quotes in UI | 1 hour |
-| 2 | Add toast notifications | 30 min |
-| 3 | Write comprehensive README | 1 hour |
-| 4 | Deploy frontend to Vercel | 30 min |
-| 5 | Record demo video | 1 hour |
+| Order | Task | Time | Status |
+|-------|------|------|--------|
+| 1 | ~~Display LI.FI quotes in UI~~ | ~~1 hour~~ | ✅ Done |
+| 2 | ~~Add toast notifications~~ | ~~30 min~~ | ✅ Done |
+| 3 | ~~Write comprehensive README~~ | ~~1 hour~~ | ✅ Done |
+| 4 | Deploy frontend to Vercel | 30 min | Pending |
+| 5 | Deploy backend to Railway | 1 hour | Pending |
+| 6 | Record demo video | 1 hour | Pending |
 
 ---
 

@@ -1,6 +1,6 @@
 # Demo Guide – SettleOne
 
-**Last Updated**: February 5, 2026 (Session 5)
+**Last Updated**: February 8, 2026 (Session 8)
 
 This guide explains how to demo SettleOne for judges.
 
@@ -62,8 +62,8 @@ This guide explains how to demo SettleOne for judges.
   - Wait for approval transaction to confirm
 - **Step 2**: Execute batch settlement
   - All payments transfer in one transaction
-- Success message shows transaction hash
-- Link to block explorer provided
+- Success toast notification with clickable link to block explorer
+- **Dynamic explorer URL** based on connected chain (Base Sepolia, Base, Ethereum, Sepolia)
 
 ## What to Highlight for Judges
 
@@ -75,7 +75,8 @@ This guide explains how to demo SettleOne for judges.
   - Session creation with ClearNode confirmation
   - State channel payments with proper allocations
   - Session close with settlement data
-- **Mention Greptile 5/5 code review score**
+- **Mention Greptile 5/5 code review score for Yellow SDK (PR #13)**
+- **Mention Greptile 4.5/5 code review score for backend polish (PR #14)**
 
 ### Cross-Chain Quote Display (LI.FI)
 - Select different source/destination chains
@@ -90,10 +91,12 @@ This guide explains how to demo SettleOne for judges.
 - Type `vitalik.eth` and show address resolution
 - Show avatar loading (when available)
 - Demonstrate error handling for invalid names
+- **Backend resolves ENS via ensdata.net API with caching** (not just frontend)
 
 ### On-Chain Settlement
 - Show USDC approval transaction
 - Show batch settlement transaction
+- **Click toast notification to open block explorer** (dynamic per chain)
 - Point to block explorer for verification
 
 ### Security Features
@@ -102,6 +105,8 @@ This guide explains how to demo SettleOne for judges.
 - Mention transaction confirmation waiting
 - Mention safe BigInt parsing
 - Mention WebSocket disconnect handling
+- **Mention 20 backend tests + 27 contract tests (47 total)**
+- **Mention Greptile AI code review: 5/5 (PR #13), 4.5/5 (PR #14)**
 
 ## Demo Video
 Length: 2-3 minutes  
@@ -131,5 +136,6 @@ Length: 2-3 minutes
 
 - Frontend: Next.js 16 + React 19 + wagmi 3
 - Contracts: Solidity 0.8.20 + OpenZeppelin
-- Backend: Rust + Axum (optional for demo)
+- Backend: Rust + Axum (real ENS resolution + 20 tests)
 - Settlement: Batch transfers via `finalizeSessionBatch()`
+- **Toast notifications**: react-hot-toast with clickable explorer links

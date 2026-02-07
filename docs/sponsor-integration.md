@@ -1,6 +1,6 @@
 # Sponsor Integration – SettleOne
 
-**Last Updated**: February 5, 2026 (Session 5)
+**Last Updated**: February 8, 2026 (Session 8)
 
 SettleOne qualifies for the following ETHGlobal HackMoney 2026 sponsor tracks:
 
@@ -34,7 +34,9 @@ Production: wss://clearnet.yellow.com/ws
 Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 ```
 
-**Code Review Score**: Greptile 5/5 - "Production-ready for hackathon scope"
+**Code Review Scores**:
+- Greptile **5/5** — "Production-ready for hackathon scope" (PR #13 — Yellow SDK)
+- Greptile **4.5/5** — "No blocking issues. Safe to merge." (PR #14 — Backend polish)
 
 ---
 
@@ -71,10 +73,13 @@ Sandbox:    wss://clearnet-sandbox.yellow.com/ws
 | Handles edge cases | **MET** | Invalid names, not found |
 
 **Implementation:**
-- `frontend/src/hooks/useENS.ts` - Resolution hook with debouncing
+- `frontend/src/hooks/useENS.ts` - Resolution hook with debouncing (viem mainnet client)
 - `frontend/src/components/features/ENSInput.tsx` - Smart input component
+- `backend/src/services/ens.rs` - **Real ENS resolution via ensdata.net API** with TTL-based caching
+- `backend/src/api/ens.rs` - ENS handlers using `State(AppState)` extractor with shared `Arc<EnsService>`
 - Avatar fetching support
 - Real-time resolution display
+- Both forward resolution and reverse lookup supported
 
 ---
 
@@ -105,15 +110,17 @@ SettleOne is a **four-track-qualified project**, designed for high technical val
 
 | Track | Compliance | Notes |
 |-------|------------|-------|
-| Yellow Network | **100%** ✅ | Full SDK integration, 5/5 review score |
+| Yellow Network | **100%** ✅ | Full SDK integration, 5/5 review score (PR #13) |
 | Circle / Arc | **100%** ✅ | Deployed + security hardened |
-| ENS | **100%** ✅ | Full resolution working |
-| LI.FI | **95%** ✅ | Backend + UI complete |
+| ENS | **100%** ✅ | Frontend (viem) + Backend (ensdata.net + cache) |
+| LI.FI | **100%** ✅ | Backend proxy + QuoteDisplay UI complete |
 
-**Overall Sponsor Compliance: ~99%**
+**Overall Sponsor Compliance: 100%**
 
 **Completed**:
 1. ✅ Yellow SDK fully integrated with @erc7824/nitrolite
 2. ✅ ClearNode WebSocket connection working
-3. ✅ LI.FI quote display in PaymentForm
-4. ✅ All code review issues addressed (Greptile 5/5)
+3. ✅ LI.FI quote display in PaymentForm with QuoteDisplay component
+4. ✅ All code review issues addressed (Greptile 5/5 PR #13, 4.5/5 PR #14)
+5. ✅ Backend real ENS resolution via ensdata.net with TTL caching
+6. ✅ EnsService singleton shared via AppState

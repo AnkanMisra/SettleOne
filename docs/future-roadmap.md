@@ -1,6 +1,6 @@
 # Smart Contracts – SettleOne
 
-**Last Updated**: February 5, 2026 (Session 5)
+**Last Updated**: February 8, 2026 (Session 8)
 
 SettleOne uses a single Base Sepolia smart contract for secure finalization of off-chain sessions.
 
@@ -73,6 +73,9 @@ SettleOne uses a single Base Sepolia smart contract for secure finalization of o
 
 ## Test Coverage
 
+47 total tests across the project:
+
+### Smart Contract Tests (27)
 27 tests covering:
 - Deployment validation
 - Session management (start, duplicate prevention)
@@ -83,6 +86,15 @@ SettleOne uses a single Base Sepolia smart contract for secure finalization of o
 
 Run tests: `cd contracts && pnpm test`
 
+### Backend Tests (20)
+20 tests covering:
+- Utility functions (address validation, ENS validation, formatting)
+- Session models (creation, payment addition, total calculation)
+- Session store (create, get, add payment, status update)
+- ENS resolution (real ensdata.net API, caching, error handling)
+
+Run tests: `cd backend && cargo test`
+
 ---
 
 ## Future Enhancements
@@ -92,3 +104,4 @@ Run tests: `cd contracts && pnpm test`
 3. **Signature-based Settlement** - Allow off-chain signatures for settlement
 4. **Streaming Payments** - Time-based payment streams
 5. **DAO Integration** - Multi-sig approval for large settlements
+6. **ENS Subgraph Integration** - When Graph Studio/Decentralized Network is set up (hosted service was sunset June 2024)

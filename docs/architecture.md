@@ -1,6 +1,6 @@
 # SettleOne – Architecture Overview
 
-**Last Updated**: February 5, 2026 (Session 5)
+**Last Updated**: February 8, 2026 (Session 8)
 
 SettleOne is composed of four core layers:
 
@@ -19,10 +19,11 @@ SettleOne is composed of four core layers:
 
 ## 2. Backend (Rust + Axum)
 - RESTful API for session management
-- **Shared `AppState` with `Arc<SessionStore>` for session persistence**
-- ENS resolution service (caches results)
+- **Shared `AppState` with `Arc<SessionStore>` + `Arc<EnsService>` for persistence**
+- **Real ENS resolution via ensdata.net API** with TTL-based caching
 - LI.FI API proxy for cross-chain quotes
 - **tx_hash preservation in finalize** (Bug fix)
+- **20 passing tests** covering utils, models, session store, and ENS resolution
 - Async/await architecture with Tokio runtime
 
 **Tech Stack:**
@@ -78,7 +79,11 @@ SettleOne is composed of four core layers:
 │  ┌────┴─────┐  ┌────┴─────┐            │  │                   │
 │  │ Session  │  │  LI.FI   │            │  └───────────────────┘
 │  │ Service  │  │ Service  │            │
-│  └──────────┘  └────┬─────┘            │
+│  └──────────┘  └──────────┘            │
+│  ┌──────────┐                          │
+│  │   ENS    │  (ensdata.net + cache)   │
+│  │ Service  │                          │
+│  └──────────┘                          │
 └─────────────────────┼──────────────────┘
                       │
                       ▼
@@ -93,9 +98,8 @@ SettleOne is composed of four core layers:
 | Integration | Purpose | Status |
 |------------|---------|--------|
 | **Yellow Network** | Off-chain session management | ✅ SDK fully integrated |
-| **ENS** | Human-readable addresses | ✅ Working (viem) |
+| **ENS** | Human-readable addresses | ✅ Frontend (viem) + Backend (ensdata.net API + cache) |
 | **LI.FI** | Cross-chain routing | ✅ Backend + UI complete |
-| **Circle Gateway** | Gasless USDC transfers | Pending |
 
 ## Data Flow
 
@@ -132,3 +136,5 @@ SettleOne is composed of four core layers:
 - **Allowance pre-validation** before state changes
 - **Transaction confirmation** before proceeding in frontend
 - **WebSocket connection guards** prevent duplicate connections
+- **Toast notifications** with clickable block explorer links (react-hot-toast)
+- **Dynamic explorer URLs** per chain (Base Sepolia, Base, Ethereum, Sepolia)
