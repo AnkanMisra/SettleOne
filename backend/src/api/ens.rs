@@ -1,9 +1,9 @@
 //! ENS resolution API handlers
 
-use axum::{extract::Query, Json};
+use axum::{extract::Query, extract::State, Json};
 use serde::{Deserialize, Serialize};
 
-use crate::services::ens::EnsService;
+use crate::AppState;
 
 /// ENS resolution request
 #[derive(Deserialize)]
@@ -21,10 +21,11 @@ pub struct ResolveResponse {
 }
 
 /// Resolve an ENS name to an address
-pub async fn resolve_ens(Query(params): Query<ResolveRequest>) -> Json<ResolveResponse> {
-    let ens_service = EnsService::new();
-
-    match ens_service.resolve(&params.name).await {
+pub async fn resolve_ens(
+    State(state): State<AppState>,
+    Query(params): Query<ResolveRequest>,
+) -> Json<ResolveResponse> {
+    match state.ens_service.resolve(&params.name).await {
         Ok(result) => Json(ResolveResponse {
             name: params.name,
             address: Some(result.address),
@@ -55,10 +56,11 @@ pub struct LookupResponse {
 }
 
 /// Reverse lookup: address to ENS name
-pub async fn lookup_address(Query(params): Query<LookupRequest>) -> Json<LookupResponse> {
-    let ens_service = EnsService::new();
-
-    match ens_service.reverse_lookup(&params.address).await {
+pub async fn lookup_address(
+    State(state): State<AppState>,
+    Query(params): Query<LookupRequest>,
+) -> Json<LookupResponse> {
+    match state.ens_service.reverse_lookup(&params.address).await {
         Ok(name) => Json(LookupResponse {
             address: params.address,
             name,

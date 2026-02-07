@@ -22,12 +22,14 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::services::ens::EnsService;
 use crate::services::session::SessionStore;
 
 /// Shared application state
 #[derive(Clone)]
 pub struct AppState {
     pub session_store: Arc<SessionStore>,
+    pub ens_service: Arc<EnsService>,
 }
 
 #[tokio::main]
@@ -47,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
     // Initialize shared state
     let state = AppState {
         session_store: Arc::new(SessionStore::new()),
+        ens_service: Arc::new(EnsService::new()),
     };
 
     // Build application
@@ -107,6 +110,7 @@ mod tests {
     fn create_test_state() -> AppState {
         AppState {
             session_store: Arc::new(SessionStore::new()),
+            ens_service: Arc::new(EnsService::new()),
         }
     }
 

@@ -127,23 +127,20 @@ impl EnsService {
             }
         }
 
-        // Fallback: try the ENS subgraph
-        match self.resolve_via_subgraph(&name_lower).await {
-            Ok(result) => {
-                self.cache_result(&name_lower, &result.address, &result.avatar)
-                    .await;
-                tracing::info!("Resolved {} -> {} (via subgraph)", name, result.address);
-                return Ok(result);
-            }
-            Err(e) => {
-                tracing::warn!("ENS subgraph resolution failed for {}: {}", name, e);
-            }
-        }
+        // NOTE: The Graph hosted service (api.thegraph.com) was sunset on
+        // June 12 2024 and no longer serves requests.  A subgraph fallback
+        // would require a Graph Studio or Decentralized Network gateway URL
+        // with an API key.  For now we rely solely on ensdata.net which is
+        // sufficient for hackathon demo purposes.
 
         Err(EnsError::NotFound(name.to_string()))
     }
 
     /// Resolve via ensdata.net public API
+    ///
+    /// Note: ensdata.net does not publish rate limits. The in-memory TTL cache
+    /// (5 min) reduces outbound calls, but under heavy traffic consider adding
+    /// a request-level rate limiter (e.g. `governor` crate) or a circuit breaker.
     async fn resolve_via_api(&self, name: &str) -> Result<EnsResult, EnsError> {
         let url = format!("https://ensdata.net/{}", name);
 
@@ -178,57 +175,6 @@ impl EnsService {
         Ok(EnsResult {
             address: address.to_string(),
             avatar,
-        })
-    }
-
-    /// Resolve via ENS subgraph (The Graph)
-    ///
-    /// Uses GraphQL variables to avoid injection via the `name` parameter.
-    async fn resolve_via_subgraph(&self, name: &str) -> Result<EnsResult, EnsError> {
-        let query = serde_json::json!({
-            "query": "query($name: String!) { domains(where: { name: $name }) { resolvedAddress { id } } }",
-            "variables": { "name": name }
-        });
-
-        let response = self
-            .http_client
-            .post("https://api.thegraph.com/subgraphs/name/ensdomains/ens")
-            .json(&query)
-            .send()
-            .await
-            .map_err(|e| EnsError::ResolutionFailed(format!("Subgraph request failed: {}", e)))?;
-
-        if !response.status().is_success() {
-            return Err(EnsError::ResolutionFailed(
-                "Subgraph returned error".to_string(),
-            ));
-        }
-
-        let data: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| EnsError::ResolutionFailed(format!("Failed to parse response: {}", e)))?;
-
-        // Safely access the domains array — .get(0) returns None on empty arrays
-        let domains = data["data"]["domains"]
-            .as_array()
-            .ok_or_else(|| EnsError::NotFound(name.to_string()))?;
-
-        let first = domains
-            .first()
-            .ok_or_else(|| EnsError::NotFound(name.to_string()))?;
-
-        let address = first["resolvedAddress"]["id"]
-            .as_str()
-            .ok_or_else(|| EnsError::NotFound(name.to_string()))?;
-
-        if address.is_empty() || address == "0x0000000000000000000000000000000000000000" {
-            return Err(EnsError::NotFound(name.to_string()));
-        }
-
-        Ok(EnsResult {
-            address: address.to_string(),
-            avatar: None,
         })
     }
 
