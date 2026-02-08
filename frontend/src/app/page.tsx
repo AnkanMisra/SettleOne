@@ -269,7 +269,7 @@ export default function Home() {
       <main className="relative z-10 max-w-xl mx-auto px-6 pt-16 pb-24">
         {/* Hero */}
         {!session && viewMode === 'home' && (
-          <div className="text-center mb-14">
+          <div className="text-center mb-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/[0.08] border border-indigo-500/[0.15] text-indigo-400 text-xs font-medium mb-6">
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-subtle-pulse" />
               Built on Yellow Network + Circle
@@ -278,7 +278,7 @@ export default function Home() {
               Send USDC to anyone.<br />
               <span className="text-gradient">Settle once.</span>
             </h2>
-            <p className="text-gray-400 text-base max-w-md mx-auto leading-relaxed">
+            <p className="text-gray-400 text-base max-w-lg mx-auto leading-relaxed">
               Batch multiple payments off-chain, then settle everything on-chain in a single transaction. Pay with ENS names.
             </p>
           </div>
@@ -289,8 +289,8 @@ export default function Home() {
           {!isConnected ? (
             /* Not connected state */
             <div className="p-8 md:p-10">
-              <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-indigo-500/[0.15] flex items-center justify-center animate-float">
+              <div className="text-center flex flex-col items-center">
+                <div className="w-16 h-16 mb-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-indigo-500/[0.15] flex items-center justify-center animate-float">
                   <svg className="w-7 h-7 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="2" y="6" width="20" height="12" rx="3" />
                     <path d="M16 12h.01" />
@@ -298,7 +298,7 @@ export default function Home() {
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-white mb-2">Connect your wallet</h3>
-                <p className="text-gray-500 text-sm mb-8 max-w-xs mx-auto">
+                <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto text-center">
                   Connect MetaMask or any injected wallet to start sending payments
                 </p>
                 <ConnectButton />

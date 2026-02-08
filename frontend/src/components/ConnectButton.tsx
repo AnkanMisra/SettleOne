@@ -38,7 +38,7 @@ export function ConnectButton() {
       onClick={() => injectedConnector && connect({ connector: injectedConnector })}
       disabled={isConnecting || !injectedConnector}
       className={`
-        flex items-center gap-2.5 px-5 py-2.5 rounded-full font-medium text-sm transition-all duration-200
+        flex items-center justify-center mx-auto gap-2.5 px-5 py-2.5 rounded-full font-medium text-sm transition-all duration-200
         ${isConnecting
           ? 'bg-white/5 text-gray-500 cursor-wait'
           : 'bg-indigo-500/90 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_30px_rgba(99,102,241,0.35)]'
