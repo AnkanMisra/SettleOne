@@ -190,19 +190,26 @@ export class YellowSession {
           }
         };
 
-        this.ws.onerror = (error) => {
-          console.error('[Yellow] WebSocket error:', error);
-          const err = new Error('Yellow Network connection error');
-          this.config.onError?.(err);
-          if (!this.isConnected) {
-            this.isConnecting = false;
-            if (this.ws) {
-              this.ws.onclose = null;
-              this.ws.close();
-              this.ws = null;
-            }
-            reject(err);
+        this.ws.onerror = (event) => {
+          // WebSocket errors in browsers are often empty events for security reasons
+          console.warn('[Yellow] WebSocket error event:', event);
+          
+          // If we're already connected, this might be a transient issue that onclose/reconnect will handle
+          if (this.isConnected) {
+            return;
           }
+
+          // If we failed during initial connection
+          const err = new Error('Yellow Network connection failed');
+          this.config.onError?.(err);
+          
+          this.isConnecting = false;
+          if (this.ws) {
+            this.ws.onclose = null;
+            this.ws.close();
+            this.ws = null;
+          }
+          reject(err);
         };
 
         this.ws.onclose = () => {
