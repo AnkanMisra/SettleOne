@@ -257,7 +257,7 @@ export default function Home() {
               </svg>
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-white tracking-tight">SettleOnce</h1>
+              <h1 className="text-lg font-semibold text-white tracking-tight">SettleOne</h1>
               <p className="text-[11px] text-gray-500 -mt-0.5 tracking-wide">Batch payments, one settlement</p>
             </div>
           </div>

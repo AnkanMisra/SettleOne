@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SettleOnce - Batch USDC Payments, Settle Once",
+  title: "SettleOne - Batch USDC Payments, Settle Once",
   description: "Cross-chain, identity-powered, gasless USDC payment platform. Send payments using ENS names with session-based settlement.",
   keywords: ["USDC", "ENS", "cross-chain", "payments", "Ethereum", "DeFi"],
 };
