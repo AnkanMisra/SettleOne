@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount, useChainId } from 'wagmi';
-import { parseUnits } from 'viem';
 import toast from 'react-hot-toast';
 import { ConnectButton } from '@/components/ConnectButton';
 import { SessionCard } from '@/components/features/SessionCard';
@@ -14,13 +13,12 @@ import { SESSION_SETTLEMENT_ADDRESSES } from '@/lib/contracts';
 
 type ViewMode = 'home' | 'payment' | 'approving' | 'settling';
 
-/** Map chain ID to block explorer base URL */
 function getExplorerUrl(chainId: number, hash: string): string {
   const explorers: Record<number, string> = {
-    84532: 'https://sepolia.basescan.org',   // Base Sepolia
-    8453: 'https://basescan.org',            // Base Mainnet
-    1: 'https://etherscan.io',               // Ethereum
-    11155111: 'https://sepolia.etherscan.io', // Sepolia
+    84532: 'https://sepolia.basescan.org',
+    8453: 'https://basescan.org',
+    1: 'https://etherscan.io',
+    11155111: 'https://sepolia.etherscan.io',
   };
   const base = explorers[chainId] || 'https://sepolia.basescan.org';
   return `${base}/tx/${hash}`;
@@ -31,13 +29,14 @@ export default function Home() {
   const chainId = useChainId();
   const [viewMode, setViewMode] = useState<ViewMode>('home');
   const [settlementStatus, setSettlementStatus] = useState<string>('');
-  
+
   const {
     session,
     isLoading,
     error,
     createSession,
     addPayment,
+    removePayment,
     finalizeSession,
   } = useSession();
 
@@ -50,9 +49,12 @@ export default function Home() {
     settleSessionBatch,
     getContractAddress,
     checkAllowance,
+    checkBalance,
+    checkIsSettled,
+    mintTestUSDC,
+    isTestnet,
   } = useSettlement();
 
-  // Yellow Network integration for off-chain instant payments
   const {
     isConnected: yellowConnected,
     isConnecting: yellowConnecting,
@@ -64,20 +66,16 @@ export default function Home() {
     sendPayment: sendYellowPayment,
   } = useYellow();
 
-  // Auto-connect to Yellow when wallet connects
   useEffect(() => {
     if (isConnected && !yellowConnected && !yellowConnecting) {
       // Optional: auto-connect to Yellow Network
-      // connectYellow();
     }
   }, [isConnected, yellowConnected, yellowConnecting]);
 
   const handleStartSession = async () => {
-    // Connect to Yellow Network for off-chain payments
     if (!yellowConnected) {
       await connectYellow();
     }
-    
     const sessionId = await createSession();
     if (sessionId) {
       setViewMode('payment');
@@ -91,43 +89,94 @@ export default function Home() {
     fromChainId: number;
     toChainId: number;
   }) => {
-    // Send instant payment via Yellow Network (off-chain)
     if (yellowConnected && yellowSessionId) {
       const yellowSuccess = await sendYellowPayment(data.recipient, data.amount);
       if (!yellowSuccess) {
         console.warn('[Yellow] Off-chain payment failed, falling back to backend only');
       }
     }
-
-    // Also record in backend for persistence
-    const success = await addPayment(
-      data.recipient,
-      data.amount,
-      data.recipientENS
-    );
+    const success = await addPayment(data.recipient, data.amount, data.recipientENS);
     if (success) {
       setViewMode('home');
     }
   };
 
-  const handleFinalize = async () => {
-    if (!session || session.payments.length === 0) {
-      return;
+  const handleRemovePayment = async (paymentId: string) => {
+    const success = await removePayment(paymentId);
+    if (!success) {
+      // Error is handled by useSession hook and displayed in UI
     }
+  };
+
+  const handleFinalize = async () => {
+    if (!session || session.payments.length === 0) return;
 
     const contractAddress = getContractAddress();
     if (!contractAddress) {
-      toast.error(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia.`);
+      toast.error(`Contract not deployed on this network (Chain ID: ${chainId}). Please switch to Base Sepolia or Sepolia.`);
       return;
     }
 
     try {
-      // Step 1: Calculate total amount needed
       const totalAmount = session.total_amount;
-      setSettlementStatus('Checking USDC approval...');
+
+      // Step 0: Check if already settled
+      const isAlreadySettled = await checkIsSettled(session.id);
+      if (isAlreadySettled) {
+        await finalizeSession(); // Sync backend
+        toast.success('Session was already settled on-chain. Syncing status...');
+        setSettlementStatus('');
+        setViewMode('home');
+        return;
+      }
+
+      if (BigInt(totalAmount) === BigInt(0)) {
+        toast.error('Total amount is zero. Please add payments with a valid amount.');
+        return;
+      }
+
+      // Step 1: Check USDC balance
+      setSettlementStatus('Checking USDC balance...');
       setViewMode('approving');
 
-      // Step 2: Check allowance and approve USDC if needed
+      let hasBalance = await checkBalance(totalAmount);
+      if (!hasBalance) {
+        if (isTestnet) {
+          // Auto-mint on testnet
+          setSettlementStatus('Minting test USDC (1000 USDC buffer)...');
+          const minted = await mintTestUSDC(totalAmount);
+          if (!minted) {
+            toast.error('Failed to mint test USDC. Please try again.');
+            setSettlementStatus('');
+            setViewMode('home');
+            return;
+          }
+          
+          // Verify balance updated
+          setSettlementStatus('Verifying balance...');
+          // Add a small delay for node indexing just in case
+          await new Promise(r => setTimeout(r, 2000));
+          hasBalance = await checkBalance(totalAmount);
+          
+          if (!hasBalance) {
+            toast.error('Mint succeeded but balance still insufficient. Please try again.');
+            setSettlementStatus('');
+            setViewMode('home');
+            return;
+          }
+          
+          toast.success('Test USDC minted successfully!');
+        } else {
+          toast.error('Insufficient USDC balance. Please fund your wallet.');
+          setSettlementStatus('');
+          setViewMode('home');
+          return;
+        }
+      }
+
+      // Step 2: Check and approve USDC allowance
+      setSettlementStatus('Checking USDC approval...');
+
       const hasAllowance = await checkAllowance(totalAmount);
       if (!hasAllowance) {
         setSettlementStatus('Approving USDC...');
@@ -139,27 +188,22 @@ export default function Home() {
         }
       }
 
-      // Step 3: Execute on-chain settlement
+      // Step 3: Settle on-chain
       setSettlementStatus('Settling on-chain...');
       setViewMode('settling');
 
-      // Prepare settlements array from session payments
-      // Use parseUnits to convert string amounts to USDC base units (6 decimals)
       const settlements = session.payments.map((payment) => ({
         recipient: payment.recipient,
-        amount: parseUnits(payment.amount, 6),
+        amount: BigInt(payment.amount),
       }));
 
       const hash = await settleSessionBatch(session.id, settlements);
 
       if (hash) {
-        // Step 4: Update backend with tx_hash
         await finalizeSession(hash);
-        
         setSettlementStatus('');
         setViewMode('home');
-        
-        // Show success with block explorer link (clickable toast)
+
         const explorerUrl = getExplorerUrl(chainId, hash);
         toast.success(
           (t) => (
@@ -172,8 +216,8 @@ export default function Home() {
             >
               Settlement complete! TX: {hash.slice(0, 10)}...{hash.slice(-8)}
               <br />
-              <span style={{ fontSize: '0.75rem', textDecoration: 'underline' }}>
-                View on explorer ↗
+              <span style={{ fontSize: '0.75rem', textDecoration: 'underline', opacity: 0.7 }}>
+                View on Explorer
               </span>
             </span>
           ),
@@ -185,63 +229,95 @@ export default function Home() {
       }
     } catch (err) {
       console.error('Settlement error:', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Settlement failed: ${message}`);
       setSettlementStatus('');
       setViewMode('home');
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+    <div className="min-h-screen relative">
+      {/* Background gradient orbs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-[40%] -left-[20%] w-[60%] h-[60%] rounded-full bg-indigo-600/[0.07] blur-[120px]" />
+        <div className="absolute -bottom-[30%] -right-[20%] w-[50%] h-[50%] rounded-full bg-violet-600/[0.05] blur-[120px]" />
+        <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-blue-600/[0.04] blur-[100px]" />
+      </div>
+
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <header className="relative z-50 border-b border-white/[0.04]">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">S1</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)]">
+              <svg className="w-4.5 h-4.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">SettleOne</h1>
-              <p className="text-xs text-gray-400">Send USDC, Settle Once</p>
+              <h1 className="text-lg font-semibold text-white tracking-tight">SettleOnce</h1>
+              <p className="text-[11px] text-gray-500 -mt-0.5 tracking-wide">Batch payments, one settlement</p>
             </div>
           </div>
           <ConnectButton />
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-2xl mx-auto px-4 py-12">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-            Send USDC Anywhere
-          </h2>
-          <p className="text-gray-400 text-lg max-w-md mx-auto">
-            Pay anyone with their ENS name. Cross-chain, gasless, instant.
-          </p>
-        </div>
+      {/* Main */}
+      <main className="relative z-10 max-w-xl mx-auto px-6 pt-16 pb-24">
+        {/* Hero */}
+        {!session && viewMode === 'home' && (
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/[0.08] border border-indigo-500/[0.15] text-indigo-400 text-xs font-medium mb-6">
+              <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-subtle-pulse" />
+              Built on Yellow Network + Circle
+            </div>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 text-white tracking-tight leading-[1.1]">
+              Send USDC to anyone.<br />
+              <span className="text-gradient">Settle once.</span>
+            </h2>
+            <p className="text-gray-400 text-base max-w-md mx-auto leading-relaxed">
+              Batch multiple payments off-chain, then settle everything on-chain in a single transaction. Pay with ENS names.
+            </p>
+          </div>
+        )}
 
-        {/* Payment Card */}
-        <div className="bg-gray-900/50 backdrop-blur border border-gray-800 rounded-2xl p-6 md:p-8">
+        {/* Main Card */}
+        <div className="glass rounded-2xl glow-sm overflow-hidden">
           {!isConnected ? (
-            <div className="text-center py-12">
-              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-orange-500/20 to-orange-600/20 flex items-center justify-center">
-                {/* MetaMask Fox */}
-                <svg className="w-10 h-10" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M36.0112 3.33325L22.1449 13.5L24.7462 7.55992L36.0112 3.33325Z" fill="#E2761B" stroke="#E2761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M3.98877 3.33325L17.7388 13.5933L15.2538 7.55992L3.98877 3.33325Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M31.0149 27.2666L27.4199 32.9333L35.2449 35.0999L37.5199 27.3999L31.0149 27.2666Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M2.48999 27.3999L4.75499 35.0999L12.58 32.9333L8.98499 27.2666L2.48999 27.3999Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+            /* Not connected state */
+            <div className="p-8 md:p-10">
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-indigo-500/[0.15] flex items-center justify-center animate-float">
+                  <svg className="w-7 h-7 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="6" width="20" height="12" rx="3" />
+                    <path d="M16 12h.01" />
+                    <path d="M2 10h20" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-2">Connect your wallet</h3>
+                <p className="text-gray-500 text-sm mb-8 max-w-xs mx-auto">
+                  Connect MetaMask or any injected wallet to start sending payments
+                </p>
+                <ConnectButton />
               </div>
-              <h3 className="text-xl font-semibold mb-2">Connect MetaMask</h3>
-              <p className="text-gray-400 mb-6">
-                Connect your MetaMask wallet to start sending payments
-              </p>
-              <ConnectButton />
             </div>
           ) : viewMode === 'payment' ? (
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-6">Add Payment</h3>
+            /* Payment form */
+            <div className="p-6 md:p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <button
+                  onClick={() => setViewMode('home')}
+                  className="w-8 h-8 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h3 className="text-lg font-semibold text-white">Add Payment</h3>
+              </div>
               <PaymentForm
                 onSubmit={handleAddPayment}
                 isLoading={isLoading}
@@ -249,162 +325,199 @@ export default function Home() {
               />
             </div>
           ) : session ? (
-            <div>
+            /* Active session */
+            <div className="p-6 md:p-8">
               {/* Yellow Network Status */}
               {yellowConnected && (
-                <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                    <span className="text-yellow-400 text-sm font-medium">
-                      Yellow Network: Connected
-                      {yellowSessionId && ` (Session: ${yellowSessionId.slice(0, 8)}...)`}
+                <div className="mb-5 p-3.5 rounded-xl bg-amber-500/[0.06] border border-amber-500/[0.12]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)] animate-subtle-pulse" />
+                    <span className="text-amber-300/90 text-sm font-medium">
+                      Yellow Network
+                      {yellowSessionId && (
+                        <span className="text-amber-400/50 font-mono ml-1.5">
+                          {yellowSessionId.slice(0, 8)}...
+                        </span>
+                      )}
                     </span>
                   </div>
                   {yellowPayments.length > 0 && (
-                    <div className="mt-2 text-xs text-yellow-400/70">
-                      {yellowPayments.length} off-chain payment(s) | Total: {(Number(yellowTotalSent) / 1e6).toFixed(2)} USDC
+                    <div className="mt-2 text-xs text-amber-400/50 pl-4.5">
+                      {yellowPayments.length} off-chain payment{yellowPayments.length !== 1 && 's'} | {(Number(yellowTotalSent) / 1e6).toFixed(2)} USDC
                     </div>
                   )}
                 </div>
               )}
-              
+
               {yellowError && (
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                <div className="mb-5 p-3.5 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12] text-red-400 text-sm">
                   Yellow Network: {yellowError}
                 </div>
               )}
 
-              {/* Settlement Status Banner */}
+              {/* Settlement Progress */}
               {(viewMode === 'approving' || viewMode === 'settling') && (
-                <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                <div className="mb-5 p-4 rounded-xl bg-indigo-500/[0.06] border border-indigo-500/[0.12]">
                   <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-blue-400 text-sm font-medium">
+                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-indigo-300 text-sm font-medium">
                       {settlementStatus || 'Processing...'}
                     </span>
                   </div>
                 </div>
               )}
-              
-              {/* Settlement Error Banner */}
+
               {settlementError && (
-                <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                <div className="mb-5 p-4 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12] text-red-400 text-sm">
                   {settlementError}
                 </div>
               )}
 
-              {/* Contract Warning */}
               {!SESSION_SETTLEMENT_ADDRESSES[chainId] && (
-                <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-400 text-sm">
-                  Contract not deployed on this network. Please switch to Base Sepolia (Chain ID: 84532).
+                <div className="mb-5 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/[0.12] text-amber-300 text-sm">
+                  Contract not deployed on this network. Switch to Base Sepolia or Sepolia.
                 </div>
               )}
 
               <SessionCard
                 session={session}
                 onAddPayment={() => setViewMode('payment')}
+                onRemovePayment={handleRemovePayment}
                 onFinalize={handleFinalize}
                 isLoading={isLoading || isApproving || isSettling || isPending}
               />
             </div>
           ) : (
-            <div className="space-y-6">
-              {/* No session yet - show start button */}
-              <div className="text-center py-8">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-600/20 flex items-center justify-center">
-                  <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            /* No session yet */
+            <div className="p-8 md:p-10">
+              <div className="text-center mb-8">
+                <div className="w-14 h-14 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-indigo-500/[0.15] flex items-center justify-center">
+                  <svg className="w-6 h-6 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v8M8 12h8" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-2">Start a Payment Session</h3>
-                <p className="text-gray-400 mb-6 max-w-sm mx-auto">
-                  Create a session to batch multiple payments and settle them all on-chain at once
+                <h3 className="text-xl font-semibold text-white mb-2">Start a session</h3>
+                <p className="text-gray-500 text-sm max-w-xs mx-auto leading-relaxed">
+                  Batch multiple payments and settle them all on-chain in one go
                 </p>
-                <button
-                  onClick={handleStartSession}
-                  disabled={isLoading}
-                  className="px-8 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 
-                    hover:from-blue-600 hover:to-purple-700 text-white font-semibold
-                    shadow-lg shadow-blue-500/25 transition-all disabled:opacity-50"
-                >
-                  {isLoading ? 'Creating...' : 'Start Session'}
-                </button>
               </div>
 
-              {/* Error display */}
+              <button
+                onClick={handleStartSession}
+                disabled={isLoading}
+                className="w-full py-3.5 rounded-xl font-semibold text-sm transition-all duration-200
+                  bg-indigo-500 hover:bg-indigo-400 text-white
+                  shadow-[0_0_24px_rgba(99,102,241,0.3)] hover:shadow-[0_0_32px_rgba(99,102,241,0.4)]
+                  disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Creating...
+                  </span>
+                ) : (
+                  'Start Payment Session'
+                )}
+              </button>
+
               {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                <div className="mt-4 p-3.5 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12] text-red-400 text-sm">
                   {error}
                 </div>
               )}
 
-              {/* Session Info */}
-              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-400">How it works</span>
+              {/* How it works */}
+              <div className="mt-8 pt-6 border-t border-white/[0.04]">
+                <p className="text-xs text-gray-600 uppercase tracking-wider font-medium mb-4">How it works</p>
+                <div className="space-y-3">
+                  {[
+                    { step: '1', text: 'Start session (connects to Yellow Network)', color: 'from-indigo-500 to-indigo-600' },
+                    { step: '2', text: 'Add payments - instant off-chain via state channels', color: 'from-violet-500 to-violet-600' },
+                    { step: '3', text: 'Settle all on-chain in a single transaction', color: 'from-purple-500 to-purple-600' },
+                  ].map((item) => (
+                    <div key={item.step} className="flex items-center gap-3">
+                      <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${item.color} flex items-center justify-center flex-shrink-0`}>
+                        <span className="text-white text-xs font-bold">{item.step}</span>
+                      </div>
+                      <span className="text-sm text-gray-400">{item.text}</span>
+                    </div>
+                  ))}
                 </div>
-                <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-                  <li>Start a session (connects to Yellow Network)</li>
-                  <li>Add payments - instant off-chain via state channels</li>
-                  <li>Settle all payments on-chain in one transaction</li>
-                </ol>
               </div>
             </div>
           )}
         </div>
 
-        {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-12">
-          <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-5">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center mb-3">
-              <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <h4 className="font-semibold mb-1">ENS Names</h4>
-            <p className="text-sm text-gray-400">Send to human-readable .eth names</p>
+        {/* Feature pills */}
+        {!session && viewMode === 'home' && (
+          <div className="mt-10 grid grid-cols-3 gap-3">
+            {[
+              {
+                icon: (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="8" r="5" />
+                    <path d="M20 21a8 8 0 10-16 0" />
+                  </svg>
+                ),
+                label: 'ENS Names',
+                sub: 'Pay vitalik.eth',
+              },
+              {
+                icon: (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                  </svg>
+                ),
+                label: 'Instant',
+                sub: 'State channels',
+              },
+              {
+                icon: (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+                  </svg>
+                ),
+                label: 'Low Cost',
+                sub: 'Batch gas savings',
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="glass-light rounded-xl p-4 text-center hover:bg-white/[0.03] transition-colors"
+              >
+                <div className="w-8 h-8 mx-auto mb-2.5 rounded-lg bg-indigo-500/[0.08] border border-indigo-500/[0.1] flex items-center justify-center text-indigo-400">
+                  {item.icon}
+                </div>
+                <p className="text-sm font-medium text-gray-200">{item.label}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{item.sub}</p>
+              </div>
+            ))}
           </div>
-          
-          <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-5">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center mb-3">
-              <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <h4 className="font-semibold mb-1">Instant</h4>
-            <p className="text-sm text-gray-400">Off-chain execution, on-chain settlement</p>
-          </div>
-          
-          <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-5">
-            <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center mb-3">
-              <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h4 className="font-semibold mb-1">Low Fees</h4>
-            <p className="text-sm text-gray-400">Batch settlements save on gas</p>
-          </div>
-        </div>
+        )}
 
-        {/* Sponsor Badges */}
-        <div className="mt-12 text-center">
-          <p className="text-xs text-gray-500 mb-4">Powered by</p>
-          <div className="flex items-center justify-center gap-6 text-gray-400">
-            <span className="text-sm">Yellow Network</span>
-            <span className="text-gray-700">|</span>
-            <span className="text-sm">Circle Arc</span>
-            <span className="text-gray-700">|</span>
-            <span className="text-sm">ENS</span>
-            <span className="text-gray-700">|</span>
-            <span className="text-sm">LI.FI</span>
+        {/* Powered by */}
+        {!session && viewMode === 'home' && (
+          <div className="mt-14 text-center">
+            <p className="text-[10px] text-gray-600 uppercase tracking-[0.2em] font-medium mb-4">Powered by</p>
+            <div className="flex items-center justify-center gap-5 text-gray-500">
+              {['Yellow Network', 'Circle', 'ENS', 'LI.FI'].map((name, i) => (
+                <span key={name} className="flex items-center gap-5 text-xs font-medium tracking-wide">
+                  {i > 0 && <span className="text-white/[0.06] mr-5">|</span>}
+                  {name}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 mt-20 py-8">
-        <div className="max-w-6xl mx-auto px-4 text-center text-sm text-gray-500">
-          <p>Built for ETHGlobal HackMoney 2026</p>
+      <footer className="relative z-10 border-t border-white/[0.03] py-6">
+        <div className="max-w-5xl mx-auto px-6 text-center">
+          <p className="text-xs text-gray-600">
+            Built for ETHGlobal HackMoney 2026
+          </p>
         </div>
       </footer>
     </div>

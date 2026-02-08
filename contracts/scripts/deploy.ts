@@ -32,7 +32,7 @@ async function main() {
   let usdcAddress = USDC_ADDRESSES[network.name];
 
   // Deploy MockUSDC for local testing or testnets without official USDC
-  if (!usdcAddress || network.name === "hardhat" || network.name === "localhost" || network.name === "baseSepolia") {
+  if (!usdcAddress || network.name === "hardhat" || network.name === "localhost" || network.name === "baseSepolia" || network.name === "sepolia") {
     console.log("\nDeploying MockUSDC for local testing...");
     const MockUSDC = await ethers.getContractFactory("MockUSDC");
     const mockUsdc = await MockUSDC.deploy();
@@ -42,7 +42,8 @@ async function main() {
 
     // Mint some USDC to deployer for testing
     const mintAmount = ethers.parseUnits("1000000", 6); // 1M USDC
-    await mockUsdc.mint(deployer.address, mintAmount);
+    const mintTx = await mockUsdc.mint(deployer.address, mintAmount);
+    await mintTx.wait(1); // Wait for 1 confirmation
     console.log("Minted", ethers.formatUnits(mintAmount, 6), "USDC to deployer");
   }
 

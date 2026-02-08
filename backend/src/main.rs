@@ -15,7 +15,7 @@ mod utils;
 use std::sync::Arc;
 
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -87,6 +87,10 @@ fn create_app(state: AppState) -> Router {
         .route("/api/session", post(api::session::create_session))
         .route("/api/session/:id", get(api::session::get_session))
         .route("/api/session/:id/payment", post(api::session::add_payment))
+        .route(
+            "/api/session/:id/payment/:payment_id",
+            delete(api::session::remove_payment),
+        )
         .route(
             "/api/session/:id/finalize",
             post(api::session::finalize_session),

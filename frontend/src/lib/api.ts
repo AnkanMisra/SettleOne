@@ -123,6 +123,18 @@ class ApiClient {
     });
   }
 
+  async removePayment(
+    sessionId: string,
+    paymentId: string
+  ): Promise<{
+    session: SessionData | null;
+    error: string | null;
+  }> {
+    return this.request(`/api/session/${sessionId}/payment/${paymentId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async finalizeSession(sessionId: string, txHash?: string): Promise<{
     session_id: string;
     status: string;

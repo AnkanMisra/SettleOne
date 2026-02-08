@@ -70,6 +70,17 @@ impl Session {
         Ok(())
     }
 
+    /// Remove a payment from the session
+    pub fn remove_payment(&mut self, payment_id: &str) -> Result<(), String> {
+        if let Some(index) = self.payments.iter().position(|p| p.id == payment_id) {
+            self.payments.remove(index);
+            self.recalculate_total()?;
+            Ok(())
+        } else {
+            Err(format!("Payment {} not found", payment_id))
+        }
+    }
+
     /// Recalculate total amount
     fn recalculate_total(&mut self) -> Result<(), String> {
         // Simple string addition for now - in production use bigdecimal

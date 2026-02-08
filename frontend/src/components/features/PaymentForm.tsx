@@ -24,46 +24,35 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
   const [recipient, setRecipient] = useState('');
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
-  const [fromChainId, setFromChainId] = useState<number>(8453); // Default to Base
-  const [toChainId, setToChainId] = useState<number>(8453); // Default to Base (same chain)
+  const [fromChainId, setFromChainId] = useState<number>(8453);
+  const [toChainId, setToChainId] = useState<number>(8453);
   const [error, setError] = useState<string | null>(null);
 
   const { quote, isLoading: quoteLoading, error: quoteError, fetchQuote, clearQuote } = useQuote();
 
-  // Check if it's a cross-chain transfer
   const isCrossChain = useMemo(() => fromChainId !== toChainId, [fromChainId, toChainId]);
 
-  // Debounced quote fetch for cross-chain
   const debouncedFetchQuote = useDebouncedCallback(
     (amountValue: string, fromChain: number, toChain: number) => {
       if (fromChain === toChain) {
         clearQuote();
         return;
       }
-
       const amountNum = parseFloat(amountValue);
       if (isNaN(amountNum) || amountNum <= 0) {
         clearQuote();
         return;
       }
-
-      // Convert to base units (6 decimals for USDC)
       try {
         const amountInBaseUnits = parseUnits(amountValue, 6).toString();
-        fetchQuote({
-          fromChainId: fromChain,
-          toChainId: toChain,
-          amount: amountInBaseUnits,
-        });
+        fetchQuote({ fromChainId: fromChain, toChainId: toChain, amount: amountInBaseUnits });
       } catch {
-        // Invalid amount format, clear any stale quote
         clearQuote();
       }
     },
     500
   );
 
-  // Fetch quote when relevant inputs change
   useEffect(() => {
     if (isCrossChain && amount) {
       debouncedFetchQuote(amount, fromChainId, toChainId);
@@ -77,14 +66,12 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
     e.preventDefault();
     setError(null);
 
-    // Validate amount
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
       setError('Please enter a valid amount');
       return;
     }
 
-    // Convert to USDC base units (6 decimals)
     let amountInBaseUnits: string;
     try {
       amountInBaseUnits = parseUnits(amount, 6).toString();
@@ -93,7 +80,6 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
       return;
     }
 
-    // Use resolved address or direct input
     const finalRecipient = resolvedAddress || recipient;
     if (!finalRecipient || !finalRecipient.startsWith('0x')) {
       setError('Please enter a valid address or ENS name');
@@ -110,7 +96,7 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <ENSInput
         value={recipient}
         onChange={(value, resolved) => {
@@ -122,8 +108,8 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
       />
 
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          Amount (USDC)
+        <label className="block text-xs text-gray-500 uppercase tracking-wider font-medium mb-2.5">
+          Amount
         </label>
         <div className="relative">
           <input
@@ -132,40 +118,39 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
             placeholder="0.00"
-            className="w-full px-4 py-3 pr-20 bg-gray-900 border border-gray-700 rounded-xl
-              text-white placeholder-gray-500 focus:outline-none focus:border-blue-500
-              transition-colors"
+            className="w-full px-4 py-3.5 pr-20 rounded-xl border transition-all duration-200 text-sm
+              bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1]
+              text-white placeholder-gray-600
+              focus:border-indigo-500/40 focus:shadow-[0_0_0_3px_rgba(99,102,241,0.08)]"
           />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-semibold tracking-wide">
             USDC
           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         <ChainSelector
-          label="From Chain"
+          label="From"
           selectedChainId={fromChainId}
           onSelect={setFromChainId}
           excludeChainId={undefined}
         />
         <ChainSelector
-          label="To Chain"
+          label="To"
           selectedChainId={toChainId}
           onSelect={setToChainId}
           excludeChainId={undefined}
         />
       </div>
 
-      {/* Cross-chain indicator */}
       {isCrossChain && (
-        <div className="flex items-center gap-2 text-sm">
-          <div className="w-2 h-2 bg-yellow-400 rounded-full" />
-          <span className="text-yellow-400">Cross-chain transfer via LI.FI</span>
+        <div className="flex items-center gap-2 text-xs">
+          <div className="w-1.5 h-1.5 bg-amber-400 rounded-full shadow-[0_0_6px_rgba(251,191,36,0.4)]" />
+          <span className="text-amber-300/80">Cross-chain via LI.FI</span>
         </div>
       )}
 
-      {/* Quote Display for cross-chain */}
       <QuoteDisplay
         quote={quote}
         isLoading={quoteLoading}
@@ -174,18 +159,19 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
       />
 
       {error && (
-        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+        <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12] text-red-400 text-sm">
           {error}
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 pt-1">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 py-3 px-4 rounded-xl bg-gray-800 text-white font-medium
-              hover:bg-gray-700 transition-colors"
+            className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200
+              bg-white/[0.04] border border-white/[0.06] text-gray-400
+              hover:bg-white/[0.07] hover:text-gray-300"
           >
             Cancel
           </button>
@@ -193,10 +179,19 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
         <button
           type="submit"
           disabled={isLoading || !recipient || !amount}
-          className="flex-1 py-3 px-4 rounded-xl bg-blue-600 text-white font-medium
-            hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200
+            bg-indigo-500 text-white hover:bg-indigo-400
+            shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_28px_rgba(99,102,241,0.35)]
+            disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
         >
-          {isLoading ? 'Adding...' : 'Add Payment'}
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Adding...
+            </span>
+          ) : (
+            'Add Payment'
+          )}
         </button>
       </div>
     </form>

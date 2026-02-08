@@ -110,6 +110,22 @@ pub async fn add_payment(
     }
 }
 
+/// Remove payment from session
+pub async fn remove_payment(
+    State(state): State<AppState>,
+    Path((id, payment_id)): Path<(String, String)>,
+) -> Result<Json<SessionResponse>, AppError> {
+    tracing::info!("Removing payment {} from session {}", payment_id, id);
+
+    match state.session_store.remove_payment(&id, &payment_id).await {
+        Some(session) => Ok(Json(SessionResponse { session })),
+        None => Err(AppError::NotFound(format!(
+            "Session {} or Payment {} not found",
+            id, payment_id
+        ))),
+    }
+}
+
 /// Finalize session request
 #[derive(Deserialize)]
 pub struct FinalizeRequest {

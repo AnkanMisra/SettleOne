@@ -44,6 +44,17 @@ impl SessionStore {
         None
     }
 
+    /// Remove payment from session
+    pub async fn remove_payment(&self, session_id: &str, payment_id: &str) -> Option<Session> {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            if session.remove_payment(payment_id).is_ok() {
+                return Some(session.clone());
+            }
+        }
+        None
+    }
+
     /// Update session status
     pub async fn update_status(&self, session_id: &str, status: SessionStatus) -> Option<Session> {
         let mut sessions = self.sessions.write().await;

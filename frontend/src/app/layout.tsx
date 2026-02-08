@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SettleOne - Send USDC Anywhere, Settle Once",
+  title: "SettleOnce - Batch USDC Payments, Settle Once",
   description: "Cross-chain, identity-powered, gasless USDC payment platform. Send payments using ENS names with session-based settlement.",
   keywords: ["USDC", "ENS", "cross-chain", "payments", "Ethereum", "DeFi"],
 };
@@ -28,7 +28,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-950 text-white min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#060611] text-white min-h-screen noise`}
       >
         <Providers>
           {children}
@@ -36,21 +36,23 @@ export default function RootLayout({
             position="bottom-right"
             toastOptions={{
               style: {
-                background: '#1f2937',
-                color: '#f3f4f6',
-                border: '1px solid #374151',
-                borderRadius: '0.75rem',
+                background: 'rgba(15, 15, 26, 0.9)',
+                color: '#e8e8f0',
+                border: '1px solid rgba(99, 102, 241, 0.15)',
+                borderRadius: '12px',
+                backdropFilter: 'blur(16px)',
+                fontSize: '14px',
               },
               success: {
                 iconTheme: {
-                  primary: '#22c55e',
-                  secondary: '#f3f4f6',
+                  primary: '#6366f1',
+                  secondary: '#e8e8f0',
                 },
               },
               error: {
                 iconTheme: {
                   primary: '#ef4444',
-                  secondary: '#f3f4f6',
+                  secondary: '#e8e8f0',
                 },
               },
             }}

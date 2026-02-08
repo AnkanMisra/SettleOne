@@ -14,6 +14,7 @@ export interface UseSessionReturn {
     amount: string,
     recipientENS?: string
   ) => Promise<boolean>;
+  removePayment: (paymentId: string) => Promise<boolean>;
   finalizeSession: (txHash?: string) => Promise<string | null>;
   refreshSession: () => Promise<void>;
 }
@@ -91,6 +92,39 @@ export function useSession(): UseSessionReturn {
     [session]
   );
 
+  const removePayment = useCallback(
+    async (paymentId: string): Promise<boolean> => {
+      if (!session) {
+        setError('No active session');
+        return false;
+      }
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await api.removePayment(session.id, paymentId);
+
+        if (response.error) {
+          setError(response.error);
+          return false;
+        }
+
+        if (response.session) {
+          setSession(response.session);
+        }
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to remove payment';
+        setError(message);
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [session]
+  );
+
   const finalizeSession = useCallback(async (txHash?: string): Promise<string | null> => {
     if (!session) {
       setError('No active session');
@@ -139,6 +173,7 @@ export function useSession(): UseSessionReturn {
     error,
     createSession,
     addPayment,
+    removePayment,
     finalizeSession,
     refreshSession,
   };
