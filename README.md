@@ -1,5 +1,7 @@
 # SettleOne
 
+### ENS PRIZE WINNER AT ETHGLOBAL HACKMONEY'26
+
 ### Send USDC anywhere. Settle once.
 
 A **cross-chain, identity-powered USDC payment platform** that batches off-chain payments through Yellow Network state channels and settles them in a single on-chain transaction on Base. Built for **ETHGlobal HackMoney 2026**.
