@@ -1,0 +1,83 @@
+# SettleOnce — Dev Compose Overrides
+#
+# Extends docker-compose.yml with development-specific configuration:
+#   - Hot reload for both backend (cargo-watch) and frontend (next dev)
+#   - Source code volume mounts so edits reflect immediately
+#   - Verbose logging
+#   - Cargo registry cache volume to avoid re-downloading crates on restart
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Alias suggestion — add to your shell profile:
+#   alias dcdev="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
+#   dcdev up --build
+#   dcdev logs -f backend
+#   dcdev exec frontend sh
+
+name: settleonce
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Backend (dev) — cargo-watch hot reload
+  #
+  # Uses the `builder` stage which has the full Rust toolchain + cargo-watch
+  # baked in. cargo-watch watches src/ and reruns `cargo run` on any .rs change.
+  # The cargo registry and target dir are mounted as named volumes so compiled
+  # deps survive container restarts — subsequent starts are seconds not minutes.
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      target: builder           # stop at builder stage — has rustc, cargo, cargo-watch
+    # cargo-watch is baked into the builder image — no install step needed at startup
+    command: cargo watch -x run
+    volumes:
+      # Live source mount — edit locally, rebuild triggers inside container
+      - ./backend/src:/app/src
+      - ./backend/Cargo.toml:/app/Cargo.toml
+      - ./backend/Cargo.lock:/app/Cargo.lock
+      # Persist compiled deps and downloaded crates across container restarts
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-target:/app/target
+    environment:
+      RUST_LOG: "settleonce_backend=debug,tower_http=debug"
+    # Remove the healthcheck delay so dev restarts are snappy
+    healthcheck:
+      start_period: 60s         # give cargo-watch time to compile on first run
+
+  # ---------------------------------------------------------------------------
+  # Frontend (dev) — Next.js dev server with hot module replacement
+  #
+  # Uses the `deps` stage (has node_modules but skips `next build`).
+  # Mounts source so HMR works without rebuilding the image.
+  # NEXT_PUBLIC_API_URL points to the backend container via internal network.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      target: deps              # stop at deps stage — skip `next build`
+    command: pnpm dev
+    volumes:
+      # Live source mounts
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/next.config.ts:/app/next.config.ts
+      # Keep node_modules from the image (do NOT mount ./frontend/node_modules)
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: "http://backend:3001"
+      NEXT_TELEMETRY_DISABLED: "1"
+    # In dev mode Next.js starts faster — reduce healthcheck delay
+    healthcheck:
+      start_period: 15s
+
+# ---------------------------------------------------------------------------
+# Named volumes for dev performance
+# ---------------------------------------------------------------------------
+volumes:
+  # Caches downloaded crates — survives `docker compose down` (not `down -v`)
+  cargo-registry:
+    name: settleonce-cargo-registry
+  # Caches compiled artifacts — dramatically speeds up incremental rebuilds
+  cargo-target:
+    name: settleonce-cargo-target

@@ -1,0 +1,149 @@
+# SettleOnce — Docker Compose
+#
+# Services:
+#   backend    Rust/Axum API server               http://localhost:3001
+#   frontend   Next.js web application            http://localhost:3000
+#   contracts  Hardhat toolchain (profile-gated)  http://localhost:8545 (local node only)
+#
+# Quick start:
+#   1. cp .env.docker.example .env.docker
+#   2. Fill in any API keys you have (all optional for basic usage)
+#   3. docker compose up --build
+#
+# Profiles:
+#   (default)   backend + frontend only
+#   contracts   adds the Hardhat container
+#
+# Examples:
+#   Full stack:            docker compose up --build
+#   Backend only:          docker compose up --build backend
+#   With contracts:        docker compose --profile contracts up --build
+#   Run contract tests:    docker compose --profile contracts run --rm contracts pnpm test
+#   Local hardhat node:    docker compose --profile contracts run --rm --service-ports contracts npx hardhat node
+
+name: settleonce
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Backend — Rust / Axum REST API
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: runtime
+    image: settleonce-backend:latest
+    container_name: settleonce-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    # env_file loads all variables from .env.docker (created from .env.docker.example)
+    env_file:
+      - path: .env.docker
+        required: false        # won't fail if file doesn't exist; ENV defaults in Dockerfile apply
+    environment:
+      PORT: "3001"
+      RUST_LOG: "settleonce_backend=info,tower_http=info"
+      # Override these in .env.docker with real values if you have them:
+      # LIFI_API_KEY:
+      # YELLOW_API_KEY:
+      # ETH_RPC_URL:
+      # ARC_RPC_URL:
+      # LIFI_API_URL:
+    networks:
+      - settleonce
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Frontend — Next.js
+  #
+  # IMPORTANT: NEXT_PUBLIC_* variables are baked into the JS bundle at build
+  # time. If you change NEXT_PUBLIC_API_URL you must rebuild the image:
+  #   docker compose up --build frontend
+  #
+  # When running both services together, the frontend talks to the backend via
+  # the internal Docker network using the service name "backend" — NOT localhost.
+  # NEXT_PUBLIC_API_URL=http://backend:3001 is the correct value here.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        # These are passed at build time and embedded into the Next.js bundle.
+        # Values are sourced from .env.docker (or environment) at build time.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3001}
+        NEXT_PUBLIC_ALCHEMY_ID: ${NEXT_PUBLIC_ALCHEMY_ID:-}
+        NEXT_PUBLIC_WALLETCONNECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_ID:-}
+        NEXT_PUBLIC_ARC_RPC: ${NEXT_PUBLIC_ARC_RPC:-https://rpc.arc.circle.com}
+        NEXT_PUBLIC_YELLOW_ENV: ${NEXT_PUBLIC_YELLOW_ENV:-}
+    image: settleonce-frontend:latest
+    container_name: settleonce-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - settleonce
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Contracts — Hardhat toolchain
+  #
+  # Gated behind the "contracts" profile so it only starts when explicitly
+  # requested. This is not a persistent service — use `run` not `up`:
+  #
+  #   Compile:        docker compose --profile contracts run --rm contracts pnpm compile
+  #   Test:           docker compose --profile contracts run --rm contracts pnpm test
+  #   Test (gas):     docker compose --profile contracts run --rm contracts pnpm test:gas
+  #   Local node:     docker compose --profile contracts run --rm --service-ports contracts npx hardhat node
+  #   Deploy local:   docker compose --profile contracts run --rm contracts pnpm deploy:local
+  #   Deploy testnet: docker compose --profile contracts run --rm contracts pnpm deploy:base-sepolia
+  # ---------------------------------------------------------------------------
+  contracts:
+    build:
+      context: ./contracts
+      dockerfile: Dockerfile
+    image: settleonce-contracts:latest
+    container_name: settleonce-contracts
+    profiles:
+      - contracts
+    ports:
+      - "8545:8545"
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      # Required for testnet/mainnet deployments — set in .env.docker
+      # PRIVATE_KEY:
+      # BASE_SEPOLIA_RPC_URL:
+      # SEPOLIA_RPC_URL:
+      REPORT_GAS: ${REPORT_GAS:-false}
+    networks:
+      - settleonce
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  settleonce:
+    driver: bridge
+    name: settleonce

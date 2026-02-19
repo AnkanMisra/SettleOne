@@ -16,6 +16,8 @@ credentials.json
 contracts/.env
 backend/.env
 frontend/.env
+# Docker environment file (created from .env.docker.example)
+.env.docker
 
 # ----------------------------------------
 # Node.js / Next.js (Frontend)

@@ -1,0 +1,36 @@
+# Node modules — installed fresh inside the image by `pnpm install`
+node_modules/
+
+# Next.js build output — produced inside the builder stage
+.next/
+out/
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Git
+.git/
+.gitignore
+
+# CI
+.github/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docs
+README.md
+docs/
+
+# pnpm store (if present locally)
+.pnpm-store/

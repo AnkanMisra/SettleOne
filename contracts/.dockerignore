@@ -1,0 +1,40 @@
+# Node modules — installed fresh inside the image by `pnpm install`
+node_modules/
+
+# Hardhat build artifacts — compiled inside the container by `pnpm compile`
+artifacts/
+cache/
+typechain-types/
+
+# Deployment records (may contain addresses but not secrets)
+deployments/
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# CI
+.github/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docs
+README.md
+docs/
+
+# pnpm store
+.pnpm-store/
+
+# Coverage reports
+coverage/
+coverage.json

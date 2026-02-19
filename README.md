@@ -259,20 +259,133 @@ SettleOne/
 
 ## Getting Started
 
-### Prerequisites
+Choose **Docker** (recommended — no toolchain required) or **manual** setup.
+
+---
+
+### Docker Setup (Recommended)
+
+> Only requires [Docker Engine 24+](https://docs.docker.com/engine/install/) or [Docker Desktop](https://www.docker.com/products/docker-desktop/). No Rust, Node.js, or pnpm needed.
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/AnkanMisra/SettleOne.git
+cd SettleOne
+
+# 2. Create your env file (safe defaults — works out of the box)
+cp .env.docker.example .env.docker
+
+# 3. Build and start everything
+docker compose up --build
+```
+
+```mermaid
+flowchart LR
+    subgraph cmd ["3 commands to run the full stack"]
+        A["git clone"] --> B["cp .env.docker.example\n.env.docker"] --> C["docker compose\nup --build"]
+    end
+
+    subgraph running ["Running at"]
+        FE["frontend\nlocalhost:3000"]
+        BE["backend\nlocalhost:3001"]
+    end
+
+    C --> FE & BE
+```
+
+#### Docker service overview
+
+```mermaid
+graph TB
+    Browser["Browser"]
+
+    subgraph Host ["Your Machine (host ports)"]
+        P3000["localhost:3000"]
+        P3001["localhost:3001"]
+        P8545["localhost:8545\n(optional)"]
+    end
+
+    subgraph Net ["Docker Network: settleonce"]
+        FE["frontend\nNext.js · React 19\nport 3000"]
+        BE["backend\nRust · Axum\nport 3001"]
+        CT["contracts\nHardhat\nport 8545\n--profile contracts"]
+    end
+
+    subgraph Ext ["External (HTTPS / WSS)"]
+        ENS["ensdata.net"]
+        LIFI["li.quest/v1"]
+        YN["Yellow ClearNode\nWSS"]
+        RPC["Base Sepolia RPC"]
+    end
+
+    Browser --> P3000 --> FE
+    Browser --> P3001 --> BE
+    FE -->|"http://backend:3001\ninternal network"| BE
+    BE --> ENS & LIFI
+    Browser -->|WSS| YN
+    Browser -->|wagmi/viem| RPC
+    P8545 -.->|dev only| CT
+```
+
+#### Dev mode — hot reload
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant Vol as Volume Mount
+    participant BE as backend (cargo-watch)
+    participant FE as frontend (next dev)
+
+    Dev->>Vol: Save .rs file
+    Vol-->>BE: Change propagated
+    BE->>BE: cargo build (incremental)
+    BE->>BE: Axum server restarts
+
+    Dev->>Vol: Save .tsx file
+    Vol-->>FE: Change propagated
+    FE-->>Dev: Browser updates instantly (HMR)
+```
+
+#### Contracts (optional profile)
+
+```bash
+# Compile
+docker compose --profile contracts run --rm contracts pnpm compile
+
+# Test
+docker compose --profile contracts run --rm contracts pnpm test
+
+# Local Hardhat node on :8545
+docker compose --profile contracts run --rm --service-ports contracts npx hardhat node
+
+# Deploy to Base Sepolia (needs PRIVATE_KEY in .env.docker)
+docker compose --profile contracts run --rm contracts pnpm deploy:base-sepolia
+```
+
+Full Docker documentation: [`docs/docker.md`](docs/docker.md)
+
+---
+
+### Manual Setup
+
+#### Prerequisites
 
 - **Node.js** 18+
 - **Rust** 1.75+
 - **pnpm** (package manager)
 
-### 1. Clone & Install
+#### 1. Clone & Install
 
 ```bash
 git clone https://github.com/AnkanMisra/SettleOne.git
 cd SettleOne
 ```
 
-### 2. Frontend
+#### 2. Frontend
 
 ```bash
 cd frontend
@@ -280,7 +393,7 @@ pnpm install
 pnpm dev          # http://localhost:3000
 ```
 
-### 3. Backend
+#### 3. Backend
 
 ```bash
 cd backend
@@ -289,7 +402,7 @@ cp .env.example .env
 cargo run         # http://localhost:3001
 ```
 
-### 4. Smart Contracts
+#### 4. Smart Contracts
 
 ```bash
 cd contracts
@@ -316,6 +429,15 @@ pnpm test         # 27 tests
 |---|---|
 | `NEXT_PUBLIC_API_URL` | Backend URL (default: `http://localhost:3001`) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect project ID |
+
+#### Docker (`.env.docker`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | `http://backend:3001` | Must use service name, not `localhost` |
+| `LIFI_API_KEY` | — | Optional, improves LI.FI rate limits |
+| `NEXT_PUBLIC_ALCHEMY_ID` | — | Optional Alchemy RPC key |
+| `PRIVATE_KEY` | — | Only needed for contract deployment |
 
 ---
 

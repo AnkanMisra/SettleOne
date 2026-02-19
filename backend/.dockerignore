@@ -1,0 +1,30 @@
+# Rust build artifacts — the multi-stage build produces these inside the
+# builder container. Exclude them from the build context so Docker doesn't
+# copy gigabytes of compiled objects into the build context on every build.
+target/
+
+# Environment files — never bake secrets into the image
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# CI
+.github/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docs
+docs/
+*.md
+
+# Lock file is intentionally included — cargo chef needs Cargo.lock
+# Cargo.lock (do NOT add this)
