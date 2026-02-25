@@ -3,7 +3,7 @@
 # Installs cargo-chef which enables dependency-layer caching for Rust builds.
 # This stage only runs once and is cached indefinitely.
 # =============================================================================
-FROM rust:1.75-slim AS chef
+FROM rust:1-slim AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
