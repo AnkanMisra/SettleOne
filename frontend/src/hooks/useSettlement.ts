@@ -90,7 +90,7 @@ export function useSettlement() {
       if (rpcChain !== arcTestnet.id) {
         throw new Error('Switch MetaMask to Arc Testnet before paying');
       }
-      const [decimals, tokenBalance, allowance, native] = await Promise.all([
+      const [decimals, tokenBalance, allowance, nativeBefore] = await Promise.all([
         client.readContract({ address: ARC_USDC, abi: erc20Abi, functionName: 'decimals' }),
         client.readContract({
           address: ARC_USDC,
@@ -108,7 +108,7 @@ export function useSettlement() {
       ]);
       if (decimals !== session.token_decimals) throw new Error('Token decimals changed');
       const total = BigInt(session.total_amount);
-      const nativeAsToken = native / (BigInt(10) ** BigInt(12));
+      const nativeAsToken = nativeBefore / (BigInt(10) ** BigInt(12));
       const spendable = tokenBalance > nativeAsToken ? tokenBalance : nativeAsToken;
       if (spendable < total) {
         throw new Error(
@@ -129,7 +129,7 @@ export function useSettlement() {
         });
         const fees = await client.estimateFeesPerGas();
         const maxFee = fees.maxFeePerGas ?? fees.gasPrice ?? BigInt(0);
-        if (native < total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
+        if (nativeBefore < total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
           throw new Error('Not enough Arc USDC left for approval gas plus the batch');
         }
         const approvalHash = await wallet.sendTransaction({
