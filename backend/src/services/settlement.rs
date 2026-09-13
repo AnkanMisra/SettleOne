@@ -243,7 +243,25 @@ impl SettlementService {
         if receipt.is_null() {
             return Ok(ReceiptOutcome::Pending);
         }
-        validate_receipt(session, draft, tx_hash, &receipt)
+        let outcome = validate_receipt(session, draft, tx_hash, &receipt)?;
+        if outcome == ReceiptOutcome::Reverted {
+            let data = format!(
+                "{}{:0>64}{}",
+                &hash(b"isDraftSettled(address,bytes32)")[..10],
+                &session.user[2..],
+                &draft.draft_id[2..]
+            );
+            let settled = self
+                .rpc(
+                    "eth_call",
+                    json!([{"to":draft.contract,"data":data},"latest"]),
+                )
+                .await?;
+            if settled.as_str() != Some(&format!("0x{}", "0".repeat(64))) {
+                return Err(AppError::Conflict("The draft is already settled or its state is unavailable. A reverted replay is not proof of an unpaid batch; reconcile the successful transaction.".into()));
+            }
+        }
+        Ok(outcome)
     }
 
     /// A signing lock can only be released once Arc proves its calldata can no longer execute.
@@ -366,6 +384,29 @@ pub fn validate_receipt(
         _ => return Err(invalid()),
     }
     let logs = receipt["logs"].as_array().ok_or_else(invalid)?;
+    let transfer_topic = hash(b"Transfer(address,address,uint256)");
+    let transfers: Vec<&Value> = logs
+        .iter()
+        .filter(|log| same(&log["address"], ARC_USDC) && same(&log["topics"][0], &transfer_topic))
+        .collect();
+    if transfers.len() != session.payments.len() {
+        return Err(invalid());
+    }
+    for (log, payment) in transfers.iter().zip(&session.payments) {
+        if !same(&log["topics"][1], &format!("0x{:0>64}", &session.user[2..]))
+            || !same(
+                &log["topics"][2],
+                &format!("0x{:0>64}", &payment.recipient[2..]),
+            )
+            || !same(
+                &log["data"],
+                &format!("0x{:064x}", amount(&payment.amount)?),
+            )
+            || log["removed"] == true
+        {
+            return Err(invalid());
+        }
+    }
     let payment_topic = hash(b"DraftPayment(bytes32,address,address,uint256)");
     let settled_topic = hash(b"DraftSettled(bytes32,address,uint256,uint256)");
     let payer_topic = format!("0x{:0>64}", &session.user[2..]);
@@ -429,6 +470,53 @@ mod tests {
     use super::*;
     use crate::models::session::{Payment, PaymentStatus, Session, SessionStatus};
     use chrono::Utc;
+
+    #[tokio::test]
+    #[ignore = "Read-only public Arc RPC verification; run explicitly when network is available"]
+    async fn live_arc_recorded_batch_has_matching_usdc_transfers() {
+        let mut session = Session::new(
+            "recorded-arc-proof".into(),
+            "0xe9a6ba0f611ef6c934624b52bd3843dfebbb98e6".into(),
+            "1000000".into(),
+        );
+        session.payments.push(Payment {
+            id: "recorded-payment".into(),
+            recipient: "0xd8da6bf26964af9d7eed9e03e53415d37aa96045".into(),
+            recipient_ens: None,
+            amount: "1000000".into(),
+            status: PaymentStatus::Pending,
+            created_at: Utc::now(),
+        });
+        session.recalculate().unwrap();
+        let mut draft = PreparedDraft {
+            draft_id: "0x4b84325729bfdf29cfb434083e615ddd48f8d6c5f0c7f04e0b64667fd8d1407d".into(),
+            contract: "0x178daba1115968e073cff667d276c752b319b019".into(),
+            expires_at: 1789292278,
+            total_limit: "1000000".into(),
+            calldata: String::new(),
+        };
+        draft.calldata = calldata(&session, &draft).unwrap();
+        session.prepared = Some(draft.clone());
+        let service = SettlementService::new(
+            "https://rpc.testnet.arc.network".into(),
+            Some(draft.contract.clone()),
+        )
+        .unwrap();
+        service
+            .verify_arc_usdc_contract(&draft.contract)
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .verify(
+                    &session,
+                    "0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1"
+                )
+                .await
+                .unwrap(),
+            ReceiptOutcome::Confirmed
+        );
+    }
 
     #[test]
     fn public_wallet_is_not_a_configuration_admin() {
@@ -572,6 +660,11 @@ mod tests {
             "blockNumber": "0x10",
             "status": "0x1",
             "logs": [{
+                "address": ARC_USDC,
+                "topics": [hash(b"Transfer(address,address,uint256)"),payer_topic,recipient_topic],
+                "data": format!("0x{:064x}",1_000_000u128),
+                "removed": false
+            }, {
                 "address": draft.contract,
                 "topics": [payment_topic, draft.draft_id, payer_topic, recipient_topic],
                 "data": format!("0x{:064x}", 1_000_000u128),
@@ -590,5 +683,63 @@ mod tests {
         let mut missing = receipt.clone();
         missing["logs"] = json!([]);
         assert!(validate_receipt(&session, &draft, &tx_hash, &missing).is_err());
+        for (pointer, value) in [
+            (
+                "/logs/0/address",
+                json!("0x3333333333333333333333333333333333333333"),
+            ),
+            ("/logs/0/topics/1", json!(format!("0x{}", "0".repeat(64)))),
+            ("/logs/0/topics/2", json!(format!("0x{}", "0".repeat(64)))),
+            ("/logs/0/data", json!(format!("0x{:064x}", 999_999))),
+            ("/logs/0/removed", json!(true)),
+            ("/logs/1/data", json!(format!("0x{:064x}", 999_999))),
+            ("/logs/2/topics/1", json!(format!("0x{}", "cd".repeat(32)))),
+        ] {
+            let mut changed = receipt.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                validate_receipt(&session, &draft, &tx_hash, &changed).is_err(),
+                "accepted changed {pointer}"
+            );
+        }
+    }
+
+    #[test]
+    fn payment_events_without_usdc_transfers_are_not_proof() {
+        let (session, draft) = sample();
+        let tx_hash = format!("0x{}", "11".repeat(32));
+        let receipt = json!({"transactionHash":tx_hash,"from":session.user,"to":draft.contract,
+        "blockNumber":"0x10","status":"0x1","logs":[
+            {"address":draft.contract,"topics":[hash(b"DraftPayment(bytes32,address,address,uint256)"),draft.draft_id,format!("0x{:0>64}",&session.user[2..]),format!("0x{:0>64}",&session.payments[0].recipient[2..])],"data":format!("0x{:064x}",1_000_000)},
+            {"address":draft.contract,"topics":[hash(b"DraftSettled(bytes32,address,uint256,uint256)"),draft.draft_id,format!("0x{:0>64}",&session.user[2..])],"data":format!("0x{:064x}{:064x}",1_000_000,1)}
+        ]});
+        assert!(validate_receipt(&session, &draft, &tx_hash, &receipt).is_err());
+    }
+
+    #[tokio::test]
+    async fn counterfeit_runtime_is_rejected_even_with_correct_usdc_getter() {
+        use axum::{routing::post, Json, Router};
+        let app = Router::new().route(
+            "/",
+            post(|Json(body): Json<Value>| async move {
+                let result = match body["method"].as_str().unwrap() {
+                    "eth_chainId" => json!("0x4cef52"),
+                    "eth_getCode" => json!("0x60006000"),
+                    _ => json!(format!("0x{:0>64}", &ARC_USDC[2..])),
+                };
+                Json(json!({"jsonrpc":"2.0","id":1,"result":result}))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let service = SettlementService::new(url, None).unwrap();
+        assert!(matches!(
+            service
+                .verify_arc_usdc_contract("0x1111111111111111111111111111111111111111")
+                .await,
+            Err(AppError::Conflict(_))
+        ));
+        task.abort();
     }
 }

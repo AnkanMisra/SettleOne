@@ -3,7 +3,7 @@
 # Installs cargo-chef which enables dependency-layer caching for Rust builds.
 # This stage only runs once and is cached indefinitely.
 # =============================================================================
-FROM rust:1-slim AS chef
+FROM rust:1-slim-bookworm AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
@@ -49,6 +49,7 @@ RUN cargo build --release --bin settleone-backend
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    libssl3 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

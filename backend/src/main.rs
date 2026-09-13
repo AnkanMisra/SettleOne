@@ -360,7 +360,7 @@ mod tests {
             .assert_status(StatusCode::CONFLICT);
     }
 
-    async fn mock_rpc(tx: Value, receipt: Value) -> String {
+    async fn mock_rpc(tx: Value, receipt: Value, draft_settled: bool) -> String {
         use axum::{routing::post, Json};
         let payload = Arc::new(tokio::sync::Mutex::new((tx, receipt)));
         let app = Router::new().route(
@@ -376,6 +376,7 @@ mod tests {
                             "eth_chainId" => json!("0x4cef52"),
                             "eth_getTransactionByHash" => tx,
                             "eth_getTransactionReceipt" => receipt,
+                            "eth_call" => json!(format!("0x{:064x}", u8::from(draft_settled))),
                             _ => Value::Null,
                         };
                         Json(json!({"jsonrpc":"2.0","id":1,"result":result}))
@@ -438,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_hash_does_not_trap_session_as_submitted() {
-        let rpc = mock_rpc(Value::Null, Value::Null).await;
+        let rpc = mock_rpc(Value::Null, Value::Null, false).await;
         let (state, _owner, token) = prepared_app(rpc);
         let store = state.session_store.clone();
         let server = TestServer::new(create_app(state)).unwrap();
@@ -455,6 +456,107 @@ mod tests {
             models::session::SessionStatus::AwaitingApproval
         );
         assert!(session.tx_hash.is_none());
+    }
+
+    #[tokio::test]
+    async fn mined_replacement_reconciles_the_original_draft_idempotently() {
+        use models::session::{SessionStatus, ARC_USDC};
+        use services::auth::hash;
+        let (mut state, owner, token) = prepared_app("http://127.0.0.1:1".into());
+        let old_hash = format!("0x{}", "11".repeat(32));
+        let new_hash = format!("0x{}", "22".repeat(32));
+        let session = state
+            .session_store
+            .edit("prepared-session", &owner, |s| {
+                s.status = SessionStatus::Submitted;
+                s.tx_hash = Some(old_hash);
+                Ok(())
+            })
+            .unwrap();
+        let draft = session.prepared.unwrap();
+        let payer = format!("0x{:0>64}", &owner[2..]);
+        let recipient = format!("0x{:0>64}", &session.payments[0].recipient[2..]);
+        let tx = json!({"from":owner,"to":draft.contract,"input":draft.calldata,"value":"0x0","chainId":"0x4cef52"});
+        let receipt = json!({"transactionHash":new_hash,"from":owner,"to":draft.contract,"blockNumber":"0x10","status":"0x1","logs":[
+            {"address":ARC_USDC,"topics":[hash(b"Transfer(address,address,uint256)"),payer,recipient],"data":format!("0x{:064x}",1_000_000)},
+            {"address":draft.contract,"topics":[hash(b"DraftPayment(bytes32,address,address,uint256)"),draft.draft_id,payer,recipient],"data":format!("0x{:064x}",1_000_000)},
+            {"address":draft.contract,"topics":[hash(b"DraftSettled(bytes32,address,uint256,uint256)"),draft.draft_id,payer],"data":format!("0x{:064x}{:064x}",1_000_000,1)}
+        ]});
+        state.settlement_service = Arc::new(
+            services::settlement::SettlementService::new(mock_rpc(tx, receipt, true).await, None)
+                .unwrap(),
+        );
+        let store = state.session_store.clone();
+        let server = TestServer::new(create_app(state)).unwrap();
+        let (h, v) = header(&token);
+        for _ in 0..2 {
+            server
+                .post("/api/session/prepared-session/finalize")
+                .add_header(h.clone(), v.clone())
+                .json(&json!({"tx_hash":new_hash}))
+                .await
+                .assert_status_ok();
+        }
+        let saved = store.get("prepared-session", &owner).unwrap();
+        assert_eq!(saved.status, SessionStatus::Confirmed);
+        assert_eq!(saved.tx_hash.as_deref(), Some(new_hash.as_str()));
+    }
+
+    #[tokio::test]
+    async fn failed_finalization_retry_does_not_need_rpc() {
+        let (state, owner, token) = prepared_app("http://127.0.0.1:1".into());
+        let hash = format!("0x{}", "11".repeat(32));
+        state
+            .session_store
+            .edit("prepared-session", &owner, |s| {
+                s.status = models::session::SessionStatus::Failed;
+                s.tx_hash = Some(hash.clone());
+                s.failure = Some("Reverted".into());
+                Ok(())
+            })
+            .unwrap();
+        let server = TestServer::new(create_app(state)).unwrap();
+        let (h, v) = header(&token);
+        server
+            .post("/api/session/prepared-session/finalize")
+            .add_header(h, v)
+            .json(&json!({"tx_hash":hash}))
+            .await
+            .assert_status_ok();
+    }
+
+    #[tokio::test]
+    async fn reverted_replay_cannot_unlock_an_already_paid_draft() {
+        let (mut state, owner, token) = prepared_app("http://127.0.0.1:1".into());
+        let snapshot = state.session_store.get("prepared-session", &owner).unwrap();
+        let draft = snapshot.prepared.unwrap();
+        let tx_hash = format!("0x{}", "11".repeat(32));
+        let tx = json!({"from":owner,"to":draft.contract,"input":draft.calldata,"value":"0x0","chainId":"0x4cef52"});
+        let receipt = json!({"transactionHash":tx_hash,"from":owner,"to":draft.contract,"blockNumber":"0x10","status":"0x0","logs":[]});
+        state.settlement_service = Arc::new(
+            services::settlement::SettlementService::new(mock_rpc(tx, receipt, true).await, None)
+                .unwrap(),
+        );
+        state
+            .session_store
+            .edit("prepared-session", &owner, |s| {
+                s.status = models::session::SessionStatus::Signing;
+                Ok(())
+            })
+            .unwrap();
+        let store = state.session_store.clone();
+        let server = TestServer::new(create_app(state)).unwrap();
+        let (h, v) = header(&token);
+        server
+            .post("/api/session/prepared-session/finalize")
+            .add_header(h, v)
+            .json(&json!({"tx_hash":tx_hash}))
+            .await
+            .assert_status(StatusCode::CONFLICT);
+        assert_eq!(
+            store.get("prepared-session", &owner).unwrap().status,
+            models::session::SessionStatus::Signing
+        );
     }
 
     #[tokio::test]
@@ -486,7 +588,7 @@ mod tests {
             "value": "0x0",
             "chainId": "0x4cef52"
         });
-        let rpc = mock_rpc(matching, Value::Null).await;
+        let rpc = mock_rpc(matching, Value::Null, false).await;
         let (state, _, token) = prepared_app(rpc);
         let store = state.session_store.clone();
         let server = TestServer::new(create_app(state)).unwrap();
@@ -549,7 +651,7 @@ mod tests {
             "status": "0x0",
             "logs": []
         });
-        let rpc = mock_rpc(tx, receipt).await;
+        let rpc = mock_rpc(tx, receipt, false).await;
         let (state, _, token) = prepared_app(rpc);
         let store = state.session_store.clone();
         let server = TestServer::new(create_app(state)).unwrap();

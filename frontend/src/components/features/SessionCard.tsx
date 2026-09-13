@@ -204,7 +204,8 @@ export function SessionCard({
       )}
 
       {session.status === 'signing' && <p className="text-amber-300 text-sm">Signing is locked across tabs. Verify any retained transaction. If signing was rejected, reset after the expiry shown above; Arc must confirm the draft was not paid.</p>}
-      {(session.status === 'awaiting_approval' || session.status === 'signing' || session.status === 'failed') && (
+      {session.status === 'submitted' && <p className="text-amber-300 text-sm">Verify the receipt after a wallet speed-up. If the transaction was cancelled or dropped, reset after expiry; Arc must prove the draft was not paid.</p>}
+      {(session.status === 'awaiting_approval' || session.status === 'signing' || session.status === 'submitted' || session.status === 'failed') && (
         <button
           type="button"
           disabled={isLoading}

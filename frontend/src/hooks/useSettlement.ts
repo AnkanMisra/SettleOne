@@ -150,11 +150,18 @@ export function useSettlement() {
       });
       sent = true;
       localStorage.setItem(retainedTxKey(session.id), hash);
-      await submitted(hash);
+      // An RPC may not see a just-broadcast transaction yet. Retain the hash and
+      // keep waiting even when the initial reconciliation cannot complete.
+      try { await submitted(hash); } catch { /* Final verification below reports failure. */ }
       setProgress('Waiting for Arc inclusion');
-      const receipt = await client.waitForTransactionReceipt({ hash });
+      const receipt = await client.waitForTransactionReceipt({
+        hash,
+        onReplaced: ({ transactionReceipt }) => {
+          localStorage.setItem(retainedTxKey(session.id), transactionReceipt.transactionHash);
+        },
+      });
       setProgress('Verifying the Arc receipt');
-      await submitted(hash);
+      await submitted(receipt.transactionHash);
       if (receipt.status !== 'success') {
         throw new Error('Settlement reverted; no batch payments settled');
       }

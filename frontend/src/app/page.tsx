@@ -134,7 +134,7 @@ export default function Home() {
               onSettle={() => act(async () => { await settlement.settle(session, flow.finalizeSession); await flow.refreshSession(); })}
               onVerify={() =>
                 act(async () => {
-                  const hash = session.tx_hash || localStorage.getItem(retainedTxKey(session.id));
+                  const hash = localStorage.getItem(retainedTxKey(session.id)) || session.tx_hash;
                   if (!hash) throw new Error('No submitted transaction to verify');
                   await flow.finalizeSession(hash);
                 })

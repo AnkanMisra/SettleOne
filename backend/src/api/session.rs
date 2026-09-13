@@ -141,7 +141,10 @@ pub async fn reset_session(
 ) -> Result<Json<Value>, AppError> {
     let owner = auth::owner(&state.session_store, &headers)?;
     let snapshot = state.session_store.get(&id, &owner)?;
-    if snapshot.status == SessionStatus::Signing {
+    if matches!(
+        snapshot.status,
+        SessionStatus::Signing | SessionStatus::Submitted
+    ) {
         state.settlement_service.can_release(&snapshot).await?;
         let before = serde_json::to_string(&snapshot)?;
         let session = state.session_store.edit(&id, &owner, |session| {
@@ -208,7 +211,11 @@ pub async fn finalize_session(
         return Err(AppError::BadRequest("Invalid transaction hash".into()));
     }
     let snapshot = state.session_store.get(&id, &owner)?;
-    if snapshot.status == SessionStatus::Confirmed && snapshot.tx_hash.as_ref() == Some(&hash) {
+    if matches!(
+        snapshot.status,
+        SessionStatus::Confirmed | SessionStatus::Failed
+    ) && snapshot.tx_hash.as_ref() == Some(&hash)
+    {
         return Ok(Json(json!({"session":snapshot})));
     }
     if !matches!(
@@ -219,20 +226,25 @@ pub async fn finalize_session(
             "Session is not awaiting a settlement".into(),
         ));
     }
-    if snapshot
+    let replaces_pending = snapshot
         .tx_hash
         .as_ref()
-        .is_some_and(|existing| existing != &hash)
-    {
-        return Err(AppError::Conflict(
-            "A different transaction is already being reconciled".into(),
-        ));
-    }
+        .is_some_and(|existing| existing != &hash);
     // RPC checks happen before saving a hash; hashes alone never establish confirmation.
     let outcome = state.settlement_service.verify(&snapshot, &hash).await?;
+    // Only success consumes the replay ID and proves no original draft can pay again.
+    if replaces_pending && outcome != ReceiptOutcome::Confirmed {
+        return Err(AppError::Conflict(
+            "Only a verified successful replacement can replace the retained transaction".into(),
+        ));
+    }
     let before = serde_json::to_string(&snapshot)?;
     let session = state.session_store.edit(&id, &owner, |session| {
-        if session.status == SessionStatus::Confirmed && session.tx_hash.as_ref() == Some(&hash) {
+        if matches!(
+            session.status,
+            SessionStatus::Confirmed | SessionStatus::Failed
+        ) && session.tx_hash.as_ref() == Some(&hash)
+        {
             return Ok(());
         }
         if serde_json::to_string(session)? != before {

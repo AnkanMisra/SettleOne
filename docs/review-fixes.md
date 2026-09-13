@@ -16,3 +16,11 @@ Set `ARC_SETTLEMENT_ADDRESS=0x178daba1115968e073cff667d276c752b319b019` for the 
 Deploy frontend and backend together and reload open browser tabs for the signing-lock protocol. Do not downgrade a running backend while `signing` sessions exist. Preserve the SQLite database and contract configuration file across deployments. Do not reset an old, unreconciled payment from a previously running client; reconcile its transaction first.
 
 No new testnet payment, ENS permission transaction, mainnet transaction, public deployment or submission is claimed by these fixes.
+
+## Follow-up failure cases
+
+Receipt verification now requires the real Arc USDC `Transfer` logs in addition to exact settlement events. Matching events emitted by a counterfeit contract cannot establish confirmation. Tests mutate token addresses, transfer senders, recipients, amounts and removed flags.
+
+A wallet speed-up can change the transaction hash. Only a verified successful replacement with the exact approved calldata can replace the retained backend hash. Pending or reverted alternatives cannot release an executable original. Cancelled or dropped submissions use the same expiry-plus-onchain-unsettled reset gate as interrupted signing. Repeating a terminal failed or confirmed finalization is idempotent.
+
+Frontend reconciliation errors propagate to the transaction view rather than disappearing during refresh. Restore and refresh also clear terminal retained hashes. Docker's Rust builder uses Bookworm to match runtime, with OpenSSL 3 explicitly installed.

@@ -14,6 +14,9 @@ export function useSession() {
   const accept = useCallback((next: SessionData) => {
     setStored(next);
     localStorage.setItem(`settleone.session.v2:${next.user.toLowerCase()}`, next.id);
+    if (next.status === 'confirmed' || next.status === 'failed') {
+      localStorage.removeItem(retainedTxKey(next.id));
+    }
     return next;
   }, []);
   const authenticate = useCallback(async () => {
@@ -24,10 +27,10 @@ export function useSession() {
     const result = await api.authenticate(challenge.challenge_id, signature);
     api.setToken(result.token);
   }, [address, signMessageAsync]);
-  const run = useCallback(async (action: () => Promise<SessionData>) => {
+  const run = useCallback(async (action: () => Promise<SessionData>, propagate = false) => {
     setIsLoading(true); setError(null);
     try { return accept(await action()); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Request failed'); return null; }
+    catch (error) { setError(error instanceof Error ? error.message : 'Request failed'); if (propagate) throw error; return null; }
     finally { setIsLoading(false); }
   }, [accept]);
   return {
@@ -61,11 +64,8 @@ export function useSession() {
     finalizeSession: (hash: string) => run(async () => {
       if (!session) throw new Error('No active session');
       const next = (await api.finalizeSession(session.id, hash)).session;
-      if (next.status === 'confirmed' || next.status === 'failed') {
-        localStorage.removeItem(retainedTxKey(session.id));
-      }
       return next;
-    }),
+    }, true),
     refreshSession: () => run(async () => {
       if (!session) throw new Error('No active session');
       return (await api.getSession(session.id)).session;
