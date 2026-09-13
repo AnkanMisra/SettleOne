@@ -1,140 +1,37 @@
-# SettleOne – Architecture Overview
+# SettleOne architecture (ETHOnline 2026)
 
-**Last Updated**: February 8, 2026 (Session 8)
-
-SettleOne is composed of four core layers:
-
-## 1. Frontend (Next.js + React)
-- Connects wallet using wagmi/viem with MetaMask or Phantom
-- Resolves ENS names via viem provider
-- Displays LI.FI cross-chain quotes with QuoteDisplay component
-- **Yellow Network SDK integration with @erc7824/nitrolite** (COMPLETE)
-  - Full authentication flow with challenge-response
-  - Session creation with ClearNode confirmation
-  - State channel payments with proper allocations
-  - Session close with settlement data
-- **Executes on-chain settlement via `useSettlement` hook**
-- **Transaction confirmation with `waitForTransactionReceipt`** (Security fix)
-- Supports Base, Base Sepolia, Ethereum, and other EVM chains
-
-## 2. Backend (Rust + Axum)
-- RESTful API for session management
-- **Shared `AppState` with `Arc<SessionStore>` + `Arc<EnsService>` for persistence**
-- **Real ENS resolution via ensdata.net API** with TTL-based caching
-- LI.FI API proxy for cross-chain quotes
-- **tx_hash preservation in finalize** (Bug fix)
-- **20 passing tests** covering utils, models, session store, and ENS resolution
-- Async/await architecture with Tokio runtime
-
-**Tech Stack:**
-- Framework: Axum 0.7
-- Runtime: Tokio
-- HTTP Client: reqwest
-- Serialization: serde/serde_json
-- Error Handling: thiserror/anyhow
-
-## 3. Smart Contracts (Base Sepolia - Solidity)
-- **SessionSettlement.sol**: Main settlement contract
-- **ISessionSettlement.sol**: Interface definitions
-- **SessionErrors.sol**: Custom error library (with security errors)
-- **SessionTypes.sol**: Shared type definitions
-- **MockUSDC.sol**: Test mock for USDC
-
-**Deployed Contracts (Base Sepolia)**:
-- SessionSettlement: `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2`
-- MockUSDC: `0xc5c8977491c2dc822F4f738356ec0231F7100f52`
-
-**Security Features:**
-- Single and batch settlement support
-- Custom errors for gas efficiency
-- Reentrancy protection (OpenZeppelin)
-- Owner-controlled emergency functions
-- Event emission for indexing
-- **Integer overflow protection** (unchecked block + custom error)
-- **Pre-validation of allowance** before state changes
-- **InsufficientAllowance** and **BatchAmountOverflow** errors
-
-## 4. External Integrations
+Updated 2026-09-13. Pre-event HackMoney notes remain in git history. This page describes the continuity path.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         USER BROWSER                            │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                   Next.js Frontend                        │   │
-│  │  • MetaMask/Phantom Wallet Connection                    │   │
-│  │  • ENS Input Resolution                                   │   │
-│  │  • Payment Session UI                                     │   │
-│  │  • useSettlement Hook (On-chain TX)                      │   │
-│  └─────────────────────────┬────────────────────────────────┘   │
-└────────────────────────────┼────────────────────────────────────┘
-                             │ HTTP/REST          │ wagmi/viem
-                             ▼                    ▼
-┌────────────────────────────────────────┐  ┌───────────────────┐
-│          RUST BACKEND (Axum)           │  │   Base Sepolia    │
-│  ┌──────────┐  ┌──────────┐            │  │                   │
-│  │ Session  │  │  Quote   │            │  │ SessionSettlement │
-│  │  Store   │  │   API    │            │  │     Contract      │
-│  └────┬─────┘  └────┬─────┘            │  │                   │
-│       │             │                   │  │   MockUSDC        │
-│  ┌────┴─────┐  ┌────┴─────┐            │  │                   │
-│  │ Session  │  │  LI.FI   │            │  └───────────────────┘
-│  │ Service  │  │ Service  │            │
-│  └──────────┘  └──────────┘            │
-│  ┌──────────┐                          │
-│  │   ENS    │  (ensdata.net + cache)   │
-│  │ Service  │                          │
-│  └──────────┘                          │
-└─────────────────────┼──────────────────┘
-                      │
-                      ▼
-               ┌───────────┐
-               │  LI.FI    │
-               │   API     │
-               └───────────┘
+Wallet (Arc Testnet)
+  -> Next.js app
+       -> Rust/Axum API (SQLite sessions, hashed bearer tokens)
+       -> Arc RPC for USDC decimals, balances, receipts
+       -> SessionSettlement.settleBatch on Arc after human signature
+Sepolia client (separate)
+  -> ENSv2 Universal Resolver reads and Permissioned Resolver writes
+The Graph (optional, server key)
+  -> Agent0 subgraph evidence for manual vendor review
 ```
 
-### External SDKs & APIs
+## Payment state machine
 
-| Integration | Purpose | Status |
-|------------|---------|--------|
-| **Yellow Network** | Off-chain session management | ✅ SDK fully integrated |
-| **ENS** | Human-readable addresses | ✅ Frontend (viem) + Backend (ensdata.net API + cache) |
-| **LI.FI** | Cross-chain routing | ✅ Backend + UI complete |
+`draft` -> `awaiting_approval` (immutable calldata) -> `submitted` (transaction found, receipt missing) -> `confirmed` or `failed`.
 
-## Data Flow
+Unknown transaction hashes stay `awaiting_approval`. They do not pin `submitted`.
 
-1. **Session Creation**
-   - User connects wallet in frontend
-   - Backend creates Yellow session
-   - Session ID returned to frontend
+Edits in `draft` or after `failed` clear the preview. `submitted` and `confirmed` cannot be edited.
 
-2. **Payment Addition**
-   - User enters ENS name + amount
-   - Frontend resolves ENS via backend
-   - Payment added to session (off-chain)
+## Chains
 
-3. **Cross-Chain (Optional)**
-   - User selects source chain
-   - Backend fetches LI.FI quote
-   - Route executed if needed
+| Concern | Chain | Notes |
+| --- | --- | --- |
+| Settlement | Arc Testnet 5042002 | Official USDC `0x3600…0000`, 6 decimals, native gas is the same asset at 18 decimals |
+| Identity | Sepolia 11155111 | Resolve current resolver before every write |
+| Vendor evidence | Sepolia subgraph | Stale indexes must not authorize payment |
 
-4. **Settlement**
-   - User triggers "Settle"
-   - Backend prepares batch data
-   - Smart contract called with settlements
-   - USDC transferred to recipients
-   - Events emitted for confirmation
+These are separate transactions. The app must not claim atomic cross-chain execution.
 
-## Security Considerations
+## Trust
 
-- All private keys stay in user's wallet
-- Backend stores no sensitive data
-- Smart contract uses reentrancy guards
-- Custom errors prevent information leakage
-- Rate limiting on API endpoints
-- **Integer overflow protection** in batch calculations
-- **Allowance pre-validation** before state changes
-- **Transaction confirmation** before proceeding in frontend
-- **WebSocket connection guards** prevent duplicate connections
-- **Toast notifications** with clickable block explorer links (react-hot-toast)
-- **Dynamic explorer URLs** per chain (Base Sepolia, Base, Ethereum, Sepolia)
+Wallet personal-sign authenticates API ownership. ERC-20 `approve` and `settleBatch` are the only spending authorizations. The backend never holds a spender key. Graph and ENS data cannot add a recipient or an amount.

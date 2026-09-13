@@ -1,126 +1,94 @@
-//! Session management service
+//! Single-instance SQLite store; edits and auth nonce consumption are atomic.
+use crate::{api::error::AppError, models::session::Session};
+use rusqlite::{params, Connection, OptionalExtension};
+use std::sync::Mutex;
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-use crate::models::session::{Payment, Session, SessionStatus};
-
-/// Session store (in-memory for hackathon)
 pub struct SessionStore {
-    sessions: Arc<RwLock<HashMap<String, Session>>>,
+    connection: Mutex<Connection>,
 }
-
 impl SessionStore {
-    /// Create a new session store
-    pub fn new() -> Self {
-        Self {
-            sessions: Arc::new(RwLock::new(HashMap::new())),
+    pub fn open(path: &str) -> Result<Self, AppError> {
+        let connection = Connection::open(path)?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        connection.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+            CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, owner TEXT NOT NULL, body TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, owner TEXT NOT NULL, message TEXT NOT NULL, expires INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS auth_tokens (hash TEXT PRIMARY KEY, owner TEXT NOT NULL, expires INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS transactions (hash TEXT PRIMARY KEY, session_id TEXT NOT NULL);")?;
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
+    }
+    pub fn connection(&self) -> Result<std::sync::MutexGuard<'_, Connection>, AppError> {
+        self.connection
+            .lock()
+            .map_err(|_| AppError::InternalServerError("Store lock unavailable".into()))
+    }
+    pub fn create(&self, session: &Session) -> Result<(), AppError> {
+        self.connection()?.execute(
+            "INSERT INTO sessions VALUES (?1,?2,?3)",
+            params![session.id, session.user, serde_json::to_string(session)?],
+        )?;
+        Ok(())
+    }
+    pub fn get(&self, id: &str, owner: &str) -> Result<Session, AppError> {
+        let body: Option<String> = self
+            .connection()?
+            .query_row(
+                "SELECT body FROM sessions WHERE id=?1 AND owner=?2",
+                params![id, owner],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match body {
+            Some(body) => Ok(serde_json::from_str(&body)?),
+            None => Err(AppError::NotFound(
+                "Session not found for this wallet".into(),
+            )),
         }
     }
-
-    /// Create a new session
-    pub async fn create(&self, id: String, user: String) -> Session {
-        let session = Session::new(id.clone(), user);
-        let mut sessions = self.sessions.write().await;
-        sessions.insert(id, session.clone());
-        session
-    }
-
-    /// Get a session by ID
-    pub async fn get(&self, id: &str) -> Option<Session> {
-        let sessions = self.sessions.read().await;
-        sessions.get(id).cloned()
-    }
-
-    /// Add payment to session
-    pub async fn add_payment(&self, session_id: &str, payment: Payment) -> Option<Session> {
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(session_id) {
-            if session.add_payment(payment).is_ok() {
-                return Some(session.clone());
-            }
-        }
-        None
-    }
-
-    /// Remove payment from session
-    pub async fn remove_payment(&self, session_id: &str, payment_id: &str) -> Option<Session> {
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(session_id) {
-            if session.remove_payment(payment_id).is_ok() {
-                return Some(session.clone());
-            }
-        }
-        None
-    }
-
-    /// Update session status
-    pub async fn update_status(&self, session_id: &str, status: SessionStatus) -> Option<Session> {
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(session_id) {
-            session.status = status;
-            return Some(session.clone());
-        }
-        None
-    }
-
-    /// Finalize session with status and optional tx_hash
-    /// Only updates tx_hash if a value is provided (preserves existing tx_hash otherwise)
-    pub async fn finalize(
+    pub fn edit(
         &self,
-        session_id: &str,
-        status: SessionStatus,
-        tx_hash: Option<String>,
-    ) -> Option<Session> {
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(session_id) {
-            session.status = status;
-            // Only update tx_hash if a new value is provided
-            if let Some(hash) = tx_hash {
-                session.tx_hash = Some(hash);
+        id: &str,
+        owner: &str,
+        edit: impl FnOnce(&mut Session) -> Result<(), AppError>,
+    ) -> Result<Session, AppError> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let body: Option<String> = transaction
+            .query_row(
+                "SELECT body FROM sessions WHERE id=?1 AND owner=?2",
+                params![id, owner],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let mut session: Session = serde_json::from_str(
+            &body.ok_or_else(|| AppError::NotFound("Session not found for this wallet".into()))?,
+        )?;
+        edit(&mut session)?;
+        if let Some(hash) = &session.tx_hash {
+            let existing: Option<String> = transaction
+                .query_row(
+                    "SELECT session_id FROM transactions WHERE hash=?1",
+                    [hash],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if existing.as_deref().is_some_and(|existing| existing != id) {
+                return Err(AppError::Conflict(
+                    "Transaction already belongs to another session".into(),
+                ));
             }
-            return Some(session.clone());
+            transaction.execute(
+                "INSERT OR IGNORE INTO transactions VALUES (?1,?2)",
+                params![hash, id],
+            )?;
         }
-        None
-    }
-}
-
-impl Default for SessionStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Session service
-#[allow(dead_code)]
-pub struct SessionService {
-    store: SessionStore,
-}
-
-#[allow(dead_code)]
-impl SessionService {
-    /// Create a new session service
-    pub fn new() -> Self {
-        Self {
-            store: SessionStore::new(),
-        }
-    }
-
-    /// Create session
-    pub async fn create_session(&self, user: String) -> Session {
-        let id = uuid::Uuid::new_v4().to_string();
-        self.store.create(id, user).await
-    }
-
-    /// Get session
-    pub async fn get_session(&self, id: &str) -> Option<Session> {
-        self.store.get(id).await
-    }
-}
-
-impl Default for SessionService {
-    fn default() -> Self {
-        Self::new()
+        transaction.execute(
+            "UPDATE sessions SET body=?1 WHERE id=?2",
+            params![serde_json::to_string(&session)?, id],
+        )?;
+        transaction.commit()?;
+        Ok(session)
     }
 }

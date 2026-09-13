@@ -1,21 +1,15 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { parseUnits } from 'viem';
+import { useState } from 'react';
+import { isAddress, parseUnits } from 'viem';
 import { ENSInput } from './ENSInput';
-import { ChainSelector } from './ChainSelector';
-import { QuoteDisplay } from './QuoteDisplay';
-import { useQuote } from '@/hooks/useQuote';
-import { useDebouncedCallback } from '@/hooks/useDebounce';
 
 interface PaymentFormProps {
   onSubmit: (data: {
     recipient: string;
     recipientENS?: string;
     amount: string;
-    fromChainId: number;
-    toChainId: number;
-  }) => void;
+  }) => Promise<unknown> | void;
   isLoading: boolean;
   onCancel?: () => void;
 }
@@ -24,92 +18,61 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
   const [recipient, setRecipient] = useState('');
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
-  const [fromChainId, setFromChainId] = useState<number>(8453);
-  const [toChainId, setToChainId] = useState<number>(8453);
   const [error, setError] = useState<string | null>(null);
 
-  const { quote, isLoading: quoteLoading, error: quoteError, fetchQuote, clearQuote } = useQuote();
-
-  const isCrossChain = useMemo(() => fromChainId !== toChainId, [fromChainId, toChainId]);
-
-  const debouncedFetchQuote = useDebouncedCallback(
-    (amountValue: string, fromChain: number, toChain: number) => {
-      if (fromChain === toChain) {
-        clearQuote();
-        return;
-      }
-      const amountNum = parseFloat(amountValue);
-      if (isNaN(amountNum) || amountNum <= 0) {
-        clearQuote();
-        return;
-      }
-      try {
-        const amountInBaseUnits = parseUnits(amountValue, 6).toString();
-        fetchQuote({ fromChainId: fromChain, toChainId: toChain, amount: amountInBaseUnits });
-      } catch {
-        clearQuote();
-      }
-    },
-    500
-  );
-
-  useEffect(() => {
-    if (isCrossChain && amount) {
-      debouncedFetchQuote(amount, fromChainId, toChainId);
-    } else {
-      clearQuote();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, fromChainId, toChainId, isCrossChain]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum <= 0) {
-      setError('Please enter a valid amount');
-      return;
-    }
-
     let amountInBaseUnits: string;
     try {
+      if (!/^\d+(\.\d{1,6})?$/.test(amount) || parseUnits(amount, 6) <= BigInt(0)) {
+        throw new Error('Enter a positive amount with at most 6 decimal places');
+      }
       amountInBaseUnits = parseUnits(amount, 6).toString();
-    } catch {
-      setError('Invalid amount format');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid amount format');
       return;
     }
 
     const finalRecipient = resolvedAddress || recipient;
-    if (!finalRecipient || !finalRecipient.startsWith('0x')) {
-      setError('Please enter a valid address or ENS name');
+    if (!isAddress(finalRecipient) || /^0x0{40}$/i.test(finalRecipient)) {
+      setError('Enter a nonzero recipient address, or a Sepolia ENS name that resolves to one');
       return;
     }
 
-    onSubmit({
-      recipient: finalRecipient,
-      recipientENS: resolvedAddress ? recipient : undefined,
-      amount: amountInBaseUnits,
-      fromChainId,
-      toChainId,
-    });
+    try {
+      await onSubmit({
+        recipient: finalRecipient,
+        recipientENS: resolvedAddress && recipient.endsWith('.eth') ? recipient : undefined,
+        amount: amountInBaseUnits,
+      });
+      setRecipient('');
+      setResolvedAddress(null);
+      setAmount('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add payment');
+    }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <p className="text-xs text-gray-500">
+        Arc Testnet only. Identity names resolve on Sepolia and are pinned to an address before payment. These are not one atomic cross-chain transaction.
+      </p>
       <ENSInput
         value={recipient}
         onChange={(value, resolved) => {
           setRecipient(value);
           setResolvedAddress(resolved);
         }}
-        placeholder="vitalik.eth or 0x..."
+        placeholder="vendor.eth or 0x..."
         label="Recipient"
       />
 
       <div>
         <label className="block text-xs text-gray-500 uppercase tracking-wider font-medium mb-2.5">
-          Amount
+          Approved invoice amount
         </label>
         <div className="relative">
           <input
@@ -128,35 +91,6 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
           </span>
         </div>
       </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <ChainSelector
-          label="From"
-          selectedChainId={fromChainId}
-          onSelect={setFromChainId}
-          excludeChainId={undefined}
-        />
-        <ChainSelector
-          label="To"
-          selectedChainId={toChainId}
-          onSelect={setToChainId}
-          excludeChainId={undefined}
-        />
-      </div>
-
-      {isCrossChain && (
-        <div className="flex items-center gap-2 text-xs">
-          <div className="w-1.5 h-1.5 bg-amber-400 rounded-full shadow-[0_0_6px_rgba(251,191,36,0.4)]" />
-          <span className="text-amber-300/80">Cross-chain via LI.FI</span>
-        </div>
-      )}
-
-      <QuoteDisplay
-        quote={quote}
-        isLoading={quoteLoading}
-        error={quoteError}
-        isCrossChain={isCrossChain}
-      />
 
       {error && (
         <div className="p-3 rounded-xl bg-red-500/[0.06] border border-red-500/[0.12] text-red-400 text-sm">
@@ -184,14 +118,7 @@ export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps)
             shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_28px_rgba(99,102,241,0.35)]
             disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
         >
-          {isLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Adding...
-            </span>
-          ) : (
-            'Add Payment'
-          )}
+          {isLoading ? 'Adding...' : 'Add payment'}
         </button>
       </div>
     </form>

@@ -4,7 +4,7 @@
 # package.json or pnpm-lock.yaml change.
 # =============================================================================
 FROM node:20-alpine AS deps
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 # Copy workspace config alongside package.json so pnpm respects ignored build
 # deps (sharp, unrs-resolver) defined in pnpm-workspace.yaml
@@ -18,7 +18,7 @@ RUN pnpm install --frozen-lockfile
 # pass them as build args via docker compose or `docker build --build-arg`.
 # =============================================================================
 FROM node:20-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
 # Receive all NEXT_PUBLIC_* vars as build args so they are embedded at build time.
@@ -28,7 +28,7 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_ALCHEMY_ID=
 ARG NEXT_PUBLIC_WALLETCONNECT_ID=
-ARG NEXT_PUBLIC_ARC_RPC=https://rpc.arc.circle.com
+ARG NEXT_PUBLIC_ARC_RPC=https://rpc.testnet.arc.network
 ARG NEXT_PUBLIC_YELLOW_ENV=
 
 # Expose them as ENV so Next.js picks them up during `next build`

@@ -44,6 +44,9 @@ services:
         required: false        # won't fail if file doesn't exist; ENV defaults in Dockerfile apply
     environment:
       PORT: "3001"
+      HOST: "0.0.0.0"
+      DATABASE_PATH: /data/settleone.sqlite
+      ARC_SETTLEMENT_PATH: /data/arc-contract.json
       RUST_LOG: "settleonce_backend=info,tower_http=info"
       # Override these in .env.docker with real values if you have them:
       # LIFI_API_KEY:
@@ -53,6 +56,8 @@ services:
       # LIFI_API_URL:
     networks:
       - settleonce
+    volumes:
+      - settleone-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -67,9 +72,8 @@ services:
   # time. If you change NEXT_PUBLIC_API_URL you must rebuild the image:
   #   docker compose up --build frontend
   #
-  # When running both services together, the frontend talks to the backend via
-  # the internal Docker network using the service name "backend" — NOT localhost.
-  # NEXT_PUBLIC_API_URL=http://backend:3001 is the correct value here.
+  # API calls run in the user's browser. Use a browser-reachable HTTPS API URL
+  # for remote deployments; localhost:3001 is only for local Docker use.
   # ---------------------------------------------------------------------------
   frontend:
     build:
@@ -79,10 +83,10 @@ services:
       args:
         # These are passed at build time and embedded into the Next.js bundle.
         # Values are sourced from .env.docker (or environment) at build time.
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3001}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
         NEXT_PUBLIC_ALCHEMY_ID: ${NEXT_PUBLIC_ALCHEMY_ID:-}
         NEXT_PUBLIC_WALLETCONNECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_ID:-}
-        NEXT_PUBLIC_ARC_RPC: ${NEXT_PUBLIC_ARC_RPC:-https://rpc.arc.circle.com}
+        NEXT_PUBLIC_ARC_RPC: ${NEXT_PUBLIC_ARC_RPC:-https://rpc.testnet.arc.network}
         NEXT_PUBLIC_YELLOW_ENV: ${NEXT_PUBLIC_YELLOW_ENV:-}
     image: settleonce-frontend:latest
     container_name: settleonce-frontend
@@ -147,3 +151,6 @@ networks:
   settleonce:
     driver: bridge
     name: settleonce
+
+volumes:
+  settleone-data:

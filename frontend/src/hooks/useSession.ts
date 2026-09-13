@@ -1,180 +1,74 @@
 'use client';
-
 import { useState, useCallback } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSignMessage } from 'wagmi';
 import { api, type SessionData } from '@/lib/api';
+import { retainedTxKey } from '@/hooks/useSettlement';
 
-export interface UseSessionReturn {
-  session: SessionData | null;
-  isLoading: boolean;
-  error: string | null;
-  createSession: () => Promise<string | null>;
-  addPayment: (
-    recipient: string,
-    amount: string,
-    recipientENS?: string
-  ) => Promise<boolean>;
-  removePayment: (paymentId: string) => Promise<boolean>;
-  finalizeSession: (txHash?: string) => Promise<string | null>;
-  refreshSession: () => Promise<void>;
-}
-
-export function useSession(): UseSessionReturn {
+export function useSession() {
   const { address } = useAccount();
-  const [session, setSession] = useState<SessionData | null>(null);
+  const { signMessageAsync } = useSignMessage();
+  const [stored, setStored] = useState<SessionData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const createSession = useCallback(async (): Promise<string | null> => {
-    if (!address) {
-      setError('Wallet not connected');
-      return null;
+  const session = stored?.user.toLowerCase() === address?.toLowerCase() ? stored : null;
+  const accept = useCallback((next: SessionData) => {
+    setStored(next);
+    localStorage.setItem(`settleone.session.v2:${next.user.toLowerCase()}`, next.id);
+    if (next.status === 'confirmed' || next.status === 'failed') {
+      localStorage.removeItem(retainedTxKey(next.id));
     }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await api.createSession(address);
-      // Fetch full session data
-      const sessionResponse = await api.getSession(response.session_id);
-      if (sessionResponse.session) {
-        setSession(sessionResponse.session);
-      }
-      return response.session_id;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create session';
-      setError(message);
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [address]);
-
-  const addPayment = useCallback(
-    async (
-      recipient: string,
-      amount: string,
-      recipientENS?: string
-    ): Promise<boolean> => {
-      if (!session) {
-        setError('No active session');
-        return false;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await api.addPayment(session.id, {
-          recipient,
-          amount,
-          recipient_ens: recipientENS,
-        });
-
-        if (response.error) {
-          setError(response.error);
-          return false;
-        }
-
-        if (response.session) {
-          setSession(response.session);
-        }
-        return true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to add payment';
-        setError(message);
-        return false;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [session]
-  );
-
-  const removePayment = useCallback(
-    async (paymentId: string): Promise<boolean> => {
-      if (!session) {
-        setError('No active session');
-        return false;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await api.removePayment(session.id, paymentId);
-
-        if (response.error) {
-          setError(response.error);
-          return false;
-        }
-
-        if (response.session) {
-          setSession(response.session);
-        }
-        return true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to remove payment';
-        setError(message);
-        return false;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [session]
-  );
-
-  const finalizeSession = useCallback(async (txHash?: string): Promise<string | null> => {
-    if (!session) {
-      setError('No active session');
-      return null;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await api.finalizeSession(session.id, txHash);
-
-      // Clear session after finalization
-      if (response.status === 'pending') {
-        setSession(null);
-      }
-      return response.tx_hash;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to finalize session';
-      setError(message);
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [session]);
-
-  const refreshSession = useCallback(async () => {
-    if (!session) return;
-
-    setIsLoading(true);
-    try {
-      const response = await api.getSession(session.id);
-      if (response.session) {
-        setSession(response.session);
-      }
-    } catch (err) {
-      console.error('Failed to refresh session:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [session]);
-
+    return next;
+  }, []);
+  const authenticate = useCallback(async () => {
+    if (!address) throw new Error('Connect your wallet first');
+    api.setToken(null);
+    const challenge = await api.challenge(address);
+    const signature = await signMessageAsync({ message: challenge.message });
+    const result = await api.authenticate(challenge.challenge_id, signature);
+    api.setToken(result.token);
+  }, [address, signMessageAsync]);
+  const run = useCallback(async (action: () => Promise<SessionData>, propagate = false) => {
+    setIsLoading(true); setError(null);
+    try { return accept(await action()); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Request failed'); if (propagate) throw error; return null; }
+    finally { setIsLoading(false); }
+  }, [accept]);
   return {
-    session,
-    isLoading,
-    error,
-    createSession,
-    addPayment,
-    removePayment,
-    finalizeSession,
-    refreshSession,
+    session, isLoading, error,
+    createSession: (budget: string) => run(async () => { await authenticate(); return (await api.createSession(address || '', budget)).session; }),
+    restoreSession: () => run(async () => {
+      await authenticate();
+      const id = localStorage.getItem(`settleone.session.v2:${address?.toLowerCase()}`);
+      if (!id) throw new Error('No saved session for this wallet');
+      return (await api.getSession(id)).session;
+    }),
+    addPayment: (recipient: string, amount: string, recipient_ens?: string) => run(async () => {
+      if (!session) throw new Error('No active session');
+      return (await api.addPayment(session.id, {recipient, amount, recipient_ens})).session;
+    }),
+    removePayment: (paymentId: string) => run(async () => {
+      if (!session) throw new Error('No active session');
+      return (await api.removePayment(session.id, paymentId)).session;
+    }),
+    prepareSession: () => run(async () => {
+      if (!session) throw new Error('No active session');
+      return (await api.prepareSession(session.id)).session;
+    }),
+    resetSession: () => run(async () => {
+      if (!session) throw new Error('No active session');
+      const id = session.id;
+      const next = (await api.resetSession(id)).session;
+      localStorage.removeItem(retainedTxKey(id));
+      return next;
+    }),
+    finalizeSession: (hash: string) => run(async () => {
+      if (!session) throw new Error('No active session');
+      const next = (await api.finalizeSession(session.id, hash)).session;
+      return next;
+    }, true),
+    refreshSession: () => run(async () => {
+      if (!session) throw new Error('No active session');
+      return (await api.getSession(session.id)).session;
+    }),
   };
 }

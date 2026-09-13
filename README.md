@@ -1,10 +1,27 @@
 # SettleOne
 
-### ENS PRIZE WINNER AT ETHGLOBAL HACKMONEY'26
+ETHOnline 2026 continuity work is in progress on `feat/ethonline-2026-continuity`. The current payment path is a human-approved Arc Testnet USDC batch, not Yellow state channels and not a live hosted demo.
+
+Read these first:
+
+- `docs/ethonline-2026-status.md` implemented vs blocked
+- `docs/runbook-live-demo.md` how to deploy and prove on Arc once keys exist
+- `docs/demo-script.md` 2-4 minute recording outline
+- `docs/ai-disclosure.md` AI-assisted files
+- `docs/review-fixes.md` contract trust, signing-lock recovery, and deployment settings
+- `docs/ens-access-notes.md` and `docs/graph-access-notes.md`
+
+Arc Testnet SessionSettlement is at `0x178daba1115968e073cff667d276c752b319b019`. A funded 1 USDC batch is in `0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1`. There is still no public hosting URL or demo recording.
+
+The section below is the original HackMoney 2026 writeup. Treat Yellow, LI.FI, and Base Sepolia claims as pre-event history, not as the 2026 critical path.
+
+---
+
+### ENS prize winner at ETHGlobal HackMoney 2026
 
 ### Send USDC anywhere. Settle once.
 
-A **cross-chain, identity-powered USDC payment platform** that batches off-chain payments through Yellow Network state channels and settles them in a single on-chain transaction on Base. Built for **ETHGlobal HackMoney 2026**.
+A cross-chain, identity-powered USDC payment platform that batched off-chain payments through Yellow Network state channels and settled them in a single on-chain transaction on Base. Built for ETHGlobal HackMoney 2026.
 
 ---
 

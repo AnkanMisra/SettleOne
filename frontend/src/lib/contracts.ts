@@ -212,8 +212,8 @@ export const SESSION_SETTLEMENT_ABI = [
 
 // Contract addresses per chain
 export const SESSION_SETTLEMENT_ADDRESSES: Record<number, `0x${string}` | undefined> = {
-  // Arc Testnet - TODO: Deploy and update
-  4457845: undefined,
+  // Arc Testnet - deployed 2026-09-13, verified usdc() == official Arc USDC
+  5042002: '0x178daba1115968e073cff667d276c752b319b019',
   // Sepolia Testnet - DEPLOYED
   11155111: '0xa8876BEc40434958F86Da193505B41423eD9ad8B',
   // Base Sepolia Testnet - DEPLOYED
@@ -226,6 +226,7 @@ export const SESSION_SETTLEMENT_ADDRESSES: Record<number, `0x${string}` | undefi
 
 // USDC addresses per chain
 export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
+  5042002: '0x3600000000000000000000000000000000000000', // Arc Testnet official USDC
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Mainnet
   10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', // Optimism
   42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum

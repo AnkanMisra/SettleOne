@@ -40,6 +40,9 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     /// @notice Mapping of session IDs to their metadata
     mapping(bytes32 => Session) private _sessions;
 
+    /// @dev Draft replay protection is independent for every transaction signer.
+    mapping(address => mapping(bytes32 => bool)) private _settledDrafts;
+
     // =============================================================
     //                         CONSTRUCTOR
     // =============================================================
@@ -58,6 +61,39 @@ contract SessionSettlement is ISessionSettlement, ReentrancyGuard, Ownable {
     // =============================================================
     //                      SESSION MANAGEMENT
     // =============================================================
+
+    /// @inheritdoc ISessionSettlement
+    function settleBatch(
+        bytes32 draftId,
+        Settlement[] calldata settlements,
+        uint256 totalLimit,
+        uint256 expiresAt
+    ) external nonReentrant {
+        if (draftId == bytes32(0)) revert SessionErrors.InvalidDraftId();
+        if (_settledDrafts[msg.sender][draftId]) {
+            revert SessionErrors.DraftAlreadySettled(msg.sender, draftId);
+        }
+        if (block.timestamp > expiresAt) revert SessionErrors.DraftExpired(expiresAt);
+        if (settlements.length == 0) revert SessionErrors.EmptyBatch();
+        if (settlements.length > MAX_BATCH_SIZE) {
+            revert SessionErrors.BatchTooLarge(settlements.length, MAX_BATCH_SIZE);
+        }
+        uint256 totalAmount = _calculateAndValidateBatch(settlements);
+        if (totalAmount > totalLimit) revert SessionErrors.TotalLimitExceeded(totalAmount, totalLimit);
+        _validateAllowance(msg.sender, totalAmount);
+        _settledDrafts[msg.sender][draftId] = true;
+        for (uint256 i = 0; i < settlements.length; i++) {
+            Settlement calldata payment = settlements[i];
+            usdc.safeTransferFrom(msg.sender, payment.recipient, payment.amount);
+            emit DraftPayment(draftId, msg.sender, payment.recipient, payment.amount);
+        }
+        emit DraftSettled(draftId, msg.sender, totalAmount, settlements.length);
+    }
+
+    /// @inheritdoc ISessionSettlement
+    function isDraftSettled(address payer, bytes32 draftId) external view returns (bool) {
+        return _settledDrafts[payer][draftId];
+    }
 
     /// @inheritdoc ISessionSettlement
     function startSession(bytes32 sessionId, address user) external {
