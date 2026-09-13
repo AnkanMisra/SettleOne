@@ -10,7 +10,7 @@ Read these first:
 - `docs/ai-disclosure.md` AI-assisted files
 - `docs/ens-access-notes.md` and `docs/graph-access-notes.md`
 
-There is no Arc Testnet settlement address, public URL, or demo recording in this repository yet.
+Arc Testnet SessionSettlement is at `0x178daba1115968e073cff667d276c752b319b019`. A funded 1 USDC batch is in `0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1`. There is still no public hosting URL or demo recording.
 
 The section below is the original HackMoney 2026 writeup. Treat Yellow, LI.FI, and Base Sepolia claims as pre-event history, not as the 2026 critical path.
 

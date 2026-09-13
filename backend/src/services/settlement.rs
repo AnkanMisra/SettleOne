@@ -83,9 +83,33 @@ impl SettlementService {
         }
         Ok(())
     }
-    pub async fn adopt(&self, candidate: &str) -> Result<String, AppError> {
+    pub fn owner_from_call(result: &Value) -> Result<String, AppError> {
+        let hex = result.as_str().ok_or_else(|| {
+            AppError::Unauthorized("Settlement owner() did not return an address".into())
+        })?;
+        let digits = hex.strip_prefix("0x").unwrap_or(hex);
+        if digits.len() < 40 {
+            return Err(AppError::Unauthorized(
+                "Settlement owner() did not return an address".into(),
+            ));
+        }
+        address(&format!("0x{}", &digits[digits.len() - 40..]))
+    }
+    pub async fn adopt(&self, candidate: &str, operator: &str) -> Result<String, AppError> {
         let candidate = address(candidate)?;
+        let operator = address(operator)?;
         self.verify_arc_usdc_contract(&candidate).await?;
+        let owner = self
+            .rpc(
+                "eth_call",
+                json!([{"to":candidate,"data":&hash(b"owner()")[..10]},"latest"]),
+            )
+            .await?;
+        if Self::owner_from_call(&owner)? != operator {
+            return Err(AppError::Unauthorized(
+                "Only the on-chain contract owner can register this settlement address".into(),
+            ));
+        }
         let mut slot = self
             .contract
             .lock()
@@ -359,6 +383,16 @@ mod tests {
         draft.calldata = calldata(&session, &draft).unwrap();
         session.prepared = Some(draft.clone());
         (session, draft)
+    }
+
+    #[test]
+    fn owner_from_call_reads_the_last_twenty_bytes() {
+        let padded = json!("0x000000000000000000000000e9a6ba0f611ef6c934624b52bd3843dfebbb98e6");
+        assert_eq!(
+            SettlementService::owner_from_call(&padded).unwrap(),
+            "0xe9a6ba0f611ef6c934624b52bd3843dfebbb98e6"
+        );
+        assert!(SettlementService::owner_from_call(&Value::Null).is_err());
     }
 
     #[test]

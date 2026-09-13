@@ -4,7 +4,7 @@
 # package.json or pnpm-lock.yaml change.
 # =============================================================================
 FROM node:20-alpine AS deps
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 # Copy workspace config alongside package.json so pnpm respects ignored build
 # deps (sharp, unrs-resolver) defined in pnpm-workspace.yaml
@@ -18,7 +18,7 @@ RUN pnpm install --frozen-lockfile
 # pass them as build args via docker compose or `docker build --build-arg`.
 # =============================================================================
 FROM node:20-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
 # Receive all NEXT_PUBLIC_* vars as build args so they are embedded at build time.

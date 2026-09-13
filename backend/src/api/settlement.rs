@@ -19,10 +19,10 @@ pub async fn configure_contract(
     headers: HeaderMap,
     Json(payload): Json<ConfigureRequest>,
 ) -> Result<Json<Value>, AppError> {
-    let _owner = auth::owner(&state.session_store, &headers)?;
+    let owner = auth::owner(&state.session_store, &headers)?;
     let contract = state
         .settlement_service
-        .adopt(&address(&payload.address)?)
+        .adopt(&address(&payload.address)?, &owner)
         .await?;
     Ok(Json(json!({"contract": contract})))
 }

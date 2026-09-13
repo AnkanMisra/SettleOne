@@ -96,6 +96,10 @@ pub fn verify(
         ));
     }
     transaction.execute("DELETE FROM challenges WHERE id=?1", [id])?;
+    transaction.execute(
+        "DELETE FROM auth_tokens WHERE expires<=?1",
+        [chrono::Utc::now().timestamp()],
+    )?;
     let token = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),

@@ -1,6 +1,6 @@
 # ETHOnline 2026 submission draft
 
-Do not submit this until live Arc and, if claimed, ENS receipts exist.
+Do not submit this until the demo video exists. Arc Testnet receipts already exist. Add ENS only after grant/revoke hashes exist.
 
 ## Title
 
@@ -16,11 +16,13 @@ Pre-event: HackMoney 2026 SettleOne on Base Sepolia with Yellow and ENS v1-era r
 
 During the event: payer-scoped `settleBatch`, SQLite-backed authenticated drafts, immutable calldata preview, receipt and event verification, Arc Testnet configuration, ENSv2 permission helpers, and a Graph review endpoint that will not pay from stale data.
 
-Not done at draft time: Arc Testnet contract address, funded batch proof, ENS grant/revoke hashes, Graph key, hosting URL, video.
+Done during the event: Arc Testnet contract `0x178daba1115968e073cff667d276c752b319b019` and funded batch `0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1`. See `docs/sponsor-notes.md`.
+
+Not done: ENS grant/revoke hashes, Graph key, public hosting URL, video.
 
 ## Links to fill later
 
-- Repo:
+- Repo: https://github.com/AnkanMisra/SettleOne/pull/34
 - Demo video:
 - Live URL:
 - Arc contract:

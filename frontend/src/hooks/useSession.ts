@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import { useAccount, useSignMessage } from 'wagmi';
 import { api, type SessionData } from '@/lib/api';
+import { retainedTxKey } from '@/hooks/useSettlement';
 
 export function useSession() {
   const { address } = useAccount();
@@ -52,11 +53,18 @@ export function useSession() {
     }),
     resetSession: () => run(async () => {
       if (!session) throw new Error('No active session');
-      return (await api.resetSession(session.id)).session;
+      const id = session.id;
+      const next = (await api.resetSession(id)).session;
+      localStorage.removeItem(retainedTxKey(id));
+      return next;
     }),
     finalizeSession: (hash: string) => run(async () => {
       if (!session) throw new Error('No active session');
-      return (await api.finalizeSession(session.id, hash)).session;
+      const next = (await api.finalizeSession(session.id, hash)).session;
+      if (next.status === 'confirmed' || next.status === 'failed') {
+        localStorage.removeItem(retainedTxKey(session.id));
+      }
+      return next;
     }),
     refreshSession: () => run(async () => {
       if (!session) throw new Error('No active session');
