@@ -2,166 +2,240 @@
 
 import { type SessionData } from '@/lib/api';
 import { formatUnits } from 'viem';
+import { arcTestnet } from '@/lib/wagmi';
 
 interface SessionCardProps {
   session: SessionData;
-  onAddPayment: () => void;
-  onRemovePayment: (paymentId: string) => void;
-  onFinalize: () => void;
   isLoading: boolean;
+  chainId?: number;
+  approvedDraftId: string | null;
+  onApprovedDraftIdChange: (draftId: string | null) => void;
+  onRemovePayment: (paymentId: string) => void;
+  onPrepare: () => void;
+  onReset: () => void;
+  onSettle: () => void;
+  onVerify: () => void;
+}
+
+const statusStyles: Record<
+  SessionData['status'],
+  { dot: string; text: string; bg: string }
+> = {
+  draft: {
+    dot: 'bg-gray-400',
+    text: 'text-gray-300',
+    bg: 'bg-white/[0.04] border-white/[0.08]',
+  },
+  awaiting_approval: {
+    dot: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]',
+    text: 'text-amber-400',
+    bg: 'bg-amber-500/[0.08] border-amber-500/[0.15]',
+  },
+  submitted: {
+    dot: 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]',
+    text: 'text-indigo-400',
+    bg: 'bg-indigo-500/[0.08] border-indigo-500/[0.15]',
+  },
+  confirmed: {
+    dot: 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]',
+    text: 'text-emerald-400',
+    bg: 'bg-emerald-500/[0.08] border-emerald-500/[0.15]',
+  },
+  failed: {
+    dot: 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]',
+    text: 'text-red-400',
+    bg: 'bg-red-500/[0.08] border-red-500/[0.15]',
+  },
+};
+
+function formatAmount(amount: string, decimals: number) {
+  try {
+    return formatUnits(BigInt(amount), decimals);
+  } catch {
+    return amount;
+  }
 }
 
 export function SessionCard({
   session,
-  onAddPayment,
-  onRemovePayment,
-  onFinalize,
   isLoading,
+  chainId,
+  approvedDraftId,
+  onApprovedDraftIdChange,
+  onRemovePayment,
+  onPrepare,
+  onReset,
+  onSettle,
+  onVerify,
 }: SessionCardProps) {
-  const formatAmount = (amount: string) => {
-    try {
-      const val = parseFloat(formatUnits(BigInt(amount), 6));
-      if (val === 0) return '0.00';
-      if (val < 0.01) return val.toFixed(6); // Show more precision for small amounts
-      return val.toFixed(2);
-    } catch {
-      return '0.00';
-    }
-  };
-
-  const shortenAddress = (address: string) => {
-    if (!address) return '';
-    if (address.length < 10) return address;
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
-  const statusConfig = {
-    active: { dot: 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]', text: 'text-emerald-400', bg: 'bg-emerald-500/[0.08] border-emerald-500/[0.15]' },
-    pending: { dot: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]', text: 'text-amber-400', bg: 'bg-amber-500/[0.08] border-amber-500/[0.15]' },
-    settled: { dot: 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]', text: 'text-indigo-400', bg: 'bg-indigo-500/[0.08] border-indigo-500/[0.15]' },
-    cancelled: { dot: 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]', text: 'text-red-400', bg: 'bg-red-500/[0.08] border-red-500/[0.15]' },
-  };
-
-  const status = statusConfig[session.status];
+  const status = statusStyles[session.status];
+  const onArc = chainId === arcTestnet.id;
+  const draft = session.prepared;
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 border border-indigo-500/[0.1] flex items-center justify-center">
-            <svg className="w-5 h-5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="4" width="20" height="16" rx="3" />
-              <path d="M2 10h20" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-white">Session</h3>
-            <p className="text-xs text-gray-500 font-mono">{session.id.slice(0, 8)}...{session.id.slice(-4)}</p>
-          </div>
+        <div>
+          <h3 className="text-base font-semibold text-white">Payment batch</h3>
+          <p className="text-xs text-gray-500 font-mono break-all">Session {session.id}</p>
         </div>
         <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${status.bg} ${status.text}`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-          {session.status}
+          <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+          {session.status.replaceAll('_', ' ')}
         </span>
       </div>
 
-      {/* Stats */}
+      <p className="text-sm text-gray-400">
+        Arc Testnet · USDC · {session.token_decimals} token decimals
+      </p>
+      <p className="break-all text-xs text-gray-500">Token: {session.token}</p>
+
       <div className="grid grid-cols-2 gap-3">
         <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
           <p className="text-xs text-gray-500 mb-1">Total</p>
           <p className="text-lg font-semibold text-white tracking-tight">
-            {formatAmount(session.total_amount)}
+            {formatAmount(session.total_amount, session.token_decimals)}
             <span className="text-sm text-gray-500 font-normal ml-1">USDC</span>
           </p>
         </div>
         <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-          <p className="text-xs text-gray-500 mb-1">Payments</p>
+          <p className="text-xs text-gray-500 mb-1">Budget</p>
           <p className="text-lg font-semibold text-white tracking-tight">
-            {session.payments.length}
-            <span className="text-sm text-gray-500 font-normal ml-1">queued</span>
+            {formatAmount(session.budget, session.token_decimals)}
+            <span className="text-sm text-gray-500 font-normal ml-1">USDC</span>
           </p>
         </div>
       </div>
 
-      {/* Payment list */}
       {session.payments.length > 0 && (
-        <div>
-          <p className="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Payments</p>
-          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-            {session.payments.map((payment, i) => (
-              <div
-                key={payment.id}
-                className="group flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.03] transition-colors gap-3"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500/10 to-violet-500/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-indigo-400">
-                    {i + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-white font-medium truncate" title={payment.recipient}>
-                      {payment.recipient_ens || shortenAddress(payment.recipient)}
-                    </p>
-                    <p className="text-xs text-gray-600">{payment.status}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-semibold text-white tabular-nums flex-shrink-0 whitespace-nowrap">
-                    {formatAmount(payment.amount)} <span className="text-gray-500 font-normal">USDC</span>
-                  </span>
-                  
-                  {session.status === 'active' && (
-                    <button
-                      type="button"
-                      onClick={() => onRemovePayment(payment.id)}
-                      disabled={isLoading}
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                      title="Remove payment"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                <th className="py-3 text-xs text-gray-500 font-medium">Pinned recipient</th>
+                <th className="text-xs text-gray-500 font-medium">USDC</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {session.payments.map((payment) => (
+                <tr key={payment.id} className="border-t border-white/10">
+                  <td className="py-3">
+                    {payment.recipient_ens && <div>{payment.recipient_ens}</div>}
+                    <code className="break-all text-xs text-gray-400">{payment.recipient}</code>
+                  </td>
+                  <td>{formatAmount(payment.amount, session.token_decimals)}</td>
+                  <td>
+                    {session.status === 'draft' && (
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => onRemovePayment(payment.id)}
+                        className="text-sm text-gray-400 hover:text-red-400"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-3 pt-1">
+      {session.status === 'draft' && (
         <button
-          onClick={onAddPayment}
-          disabled={isLoading || session.status !== 'active'}
-          className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200
-            bg-white/[0.04] border border-white/[0.06] text-gray-300
-            hover:bg-white/[0.07] hover:text-white hover:border-white/[0.1]
-            disabled:opacity-30 disabled:cursor-not-allowed"
+          type="button"
+          onClick={onPrepare}
+          disabled={isLoading || session.payments.length === 0}
+          className="w-full py-3 px-4 rounded-xl text-sm font-semibold bg-indigo-500 text-white disabled:opacity-30"
         >
-          + Add Payment
+          Prepare exact preview
         </button>
-        <button
-          onClick={onFinalize}
-          disabled={isLoading || session.payments.length === 0 || session.status !== 'active'}
-          className="flex-1 py-3 px-4 rounded-xl text-sm font-semibold transition-all duration-200
-            bg-indigo-500 text-white
-            hover:bg-indigo-400
-            shadow-[0_0_20px_rgba(99,102,241,0.25)] hover:shadow-[0_0_28px_rgba(99,102,241,0.35)]
-            disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
-        >
-          {isLoading ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Processing...
-            </span>
-          ) : (
-            'Settle All On-Chain'
+      )}
+
+      {draft && (
+        <div className="space-y-3 rounded-xl border border-indigo-400/40 p-4">
+          <p className="text-sm font-medium text-white">Exact settlement preview</p>
+          <p className="break-all text-xs text-gray-400">Settlement contract: {draft.contract}</p>
+          <p className="text-sm">Chain: Arc Testnet ({session.chain_id})</p>
+          <p className="text-sm">Token: USDC ({session.token})</p>
+          <p className="text-sm">Expires {new Date(draft.expires_at * 1000).toLocaleString()}</p>
+          <p className="text-sm">
+            Onchain total limit: {formatAmount(draft.total_limit, session.token_decimals)} USDC
+          </p>
+          <ul className="text-sm space-y-1">
+            {session.payments.map((payment) => (
+              <li key={payment.id} className="break-all">
+                {payment.recipient} · {formatAmount(payment.amount, session.token_decimals)} USDC
+              </li>
+            ))}
+          </ul>
+          {session.status === 'awaiting_approval' && (
+            <>
+              <label className="flex gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={approvedDraftId === draft.draft_id}
+                  onChange={(e) =>
+                    onApprovedDraftIdChange(e.target.checked ? draft.draft_id : null)
+                  }
+                />
+                I approve the exact recipients, amounts, chain, token and total shown above.
+              </label>
+              <button
+                type="button"
+                className="w-full py-3 px-4 rounded-xl text-sm font-semibold bg-indigo-500 text-white disabled:opacity-30"
+                disabled={
+                  isLoading || approvedDraftId !== draft.draft_id || !onArc
+                }
+                onClick={onSettle}
+              >
+                Approve USDC and sign batch
+              </button>
+              {!onArc && (
+                <p className="text-xs text-amber-300">Switch to Arc Testnet before signing.</p>
+              )}
+            </>
           )}
+        </div>
+      )}
+
+      {(session.status === 'awaiting_approval' || session.status === 'failed') && (
+        <button
+          type="button"
+          disabled={isLoading}
+          onClick={onReset}
+          className="text-sm text-gray-400 hover:text-white"
+        >
+          Return to editing · invalidates this preview
         </button>
-      </div>
+      )}
+
+      <button
+        type="button"
+        className="block text-indigo-300 text-sm"
+        disabled={isLoading}
+        onClick={onVerify}
+      >
+        Verify receipt
+      </button>
+
+      {session.tx_hash && (
+        <a
+          className="block break-all text-indigo-300 text-sm"
+          href={`${arcTestnet.blockExplorers.default.url}/tx/${session.tx_hash}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {session.tx_hash}
+        </a>
+      )}
+      {session.failure && <p role="alert">{session.failure}</p>}
+      {session.status === 'confirmed' && (
+        <p className="text-green-300">Confirmed by backend receipt and payment-event verification.</p>
+      )}
     </div>
   );
 }

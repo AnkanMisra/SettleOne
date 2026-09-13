@@ -7,6 +7,10 @@ pragma solidity ^0.8.20;
  * @dev Using custom errors for gas efficiency over require strings
  */
 library SessionErrors {
+    error InvalidDraftId();
+    error DraftAlreadySettled(address payer, bytes32 draftId);
+    error DraftExpired(uint256 expiresAt);
+    error TotalLimitExceeded(uint256 totalAmount, uint256 totalLimit);
     /// @notice Thrown when attempting to create a session that already exists
     /// @param sessionId The duplicate session ID
     error SessionAlreadyExists(bytes32 sessionId);

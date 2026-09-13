@@ -58,6 +58,7 @@ contracts/cache/
 contracts/typechain-types/
 contracts/deployments/
 !contracts/deployments/.gitkeep
+!contracts/deployments/arc.json
 
 # ----------------------------------------
 # IDE & Editors

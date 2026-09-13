@@ -1,0 +1,16 @@
+{
+  "network": "arc",
+  "chainId": 5042002,
+  "deployer": "0xe9a6ba0f611ef6c934624b52bd3843dfebbb98e6",
+  "contracts": {
+    "SessionSettlement": "0x178daba1115968e073cff667d276c752b319b019",
+    "USDC": "0x3600000000000000000000000000000000000000"
+  },
+  "usdcDecimals": 6,
+  "deploymentTxHash": "0x4c8bbef9de81461b1a6a2eee869d7793e9ae6515f2f5c96f9dc19d21e4a89b6a",
+  "blockNumber": 61876484,
+  "blockHash": "0x6dc78cefca97d35807d761a5ad959dde81fd340e815c6787bd7a829c0ce7082a",
+  "timestamp": "2026-09-13T09:22:39+00:00",
+  "mock": false,
+  "verifiedUsdc": "0x3600000000000000000000000000000000000000"
+}

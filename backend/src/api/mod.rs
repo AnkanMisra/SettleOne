@@ -7,6 +7,8 @@ pub mod ens;
 pub mod error;
 pub mod quote;
 pub mod session;
+pub mod graph;
+pub mod settlement;
 
 /// Health check response
 #[derive(Serialize)]
@@ -22,3 +24,5 @@ pub async fn health_check() -> Json<HealthResponse> {
         version: env!("CARGO_PKG_VERSION"),
     })
 }
+
+pub mod auth;

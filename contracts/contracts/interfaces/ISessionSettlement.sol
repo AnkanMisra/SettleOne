@@ -42,6 +42,22 @@ interface ISessionSettlement {
     /// @notice Emitted when a batch settlement is completed
     event BatchSettled(bytes32 indexed sessionId, uint256 totalAmount, uint256 recipientCount);
 
+    /// @notice A recipient transfer, bound to the payer and approved draft.
+    event DraftPayment(bytes32 indexed draftId, address indexed payer, address indexed recipient, uint256 amount);
+
+    /// @notice Emitted after every transfer in a draft completes atomically.
+    event DraftSettled(bytes32 indexed draftId, address indexed payer, uint256 totalAmount, uint256 recipientCount);
+
+    /// @notice Pays an approved draft from msg.sender's USDC allowance before expiry.
+    /// @param draftId Nonzero identifier unique within this payer's drafts.
+    /// @param settlements Exact recipient and six-decimal USDC amount pairs.
+    /// @param totalLimit Maximum aggregate amount the payer authorizes.
+    /// @param expiresAt Last Unix timestamp at which the draft may execute.
+    function settleBatch(bytes32 draftId, Settlement[] calldata settlements, uint256 totalLimit, uint256 expiresAt) external;
+
+    /// @notice Returns whether this payer has executed the given draft.
+    function isDraftSettled(address payer, bytes32 draftId) external view returns (bool);
+
     // =============================================================
     //                         FUNCTIONS
     // =============================================================
