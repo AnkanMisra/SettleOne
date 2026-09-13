@@ -4,8 +4,6 @@ Prepare contractor payments as a draft, approve the exact list, then settle one 
 
 Live app: [settleone.vercel.app](https://settleone.vercel.app)
 
-This is not the old HackMoney Yellow path, and it is not an ENS prize page.
-
 ## What it does
 
 You sign in with a personal-sign message. That authenticates the draft. It does not move funds.
