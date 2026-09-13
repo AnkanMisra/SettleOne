@@ -57,6 +57,7 @@ export interface GraphAgentEvidence {
   active: boolean;
   total_feedback: number;
   warning: string | null;
+  decision: 'exclude' | 'manual_review' | 'eligible';
 }
 
 export interface GraphReview {

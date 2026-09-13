@@ -151,6 +151,36 @@ export function useEnsPermissions() {
     }
   }
 
+  async function inspectName(name: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!sepoliaClient) throw new Error('Sepolia RPC is unavailable');
+      await requireSepolia();
+      const resolver = await currentResolver(name);
+      const payout = await sepoliaClient.getEnsAddress({
+        name: normalize(name),
+        universalResolverAddress: UNIVERSAL_RESOLVER,
+      });
+      const text = await sepoliaClient.getEnsText({
+        name: normalize(name),
+        key: SERVICE_METADATA_KEY,
+        universalResolverAddress: UNIVERSAL_RESOLVER,
+      });
+      note(`Current resolver ${resolver}`);
+      note(payout ? `Sepolia payout address ${payout}` : 'No payout address is set on this name');
+      note(text ? `${SERVICE_METADATA_KEY}=${text}` : `${SERVICE_METADATA_KEY} is unset`);
+      return { resolver, payout, text };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'ENS inspect failed';
+      setError(message);
+      note(message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return {
     busy,
     log,
@@ -159,5 +189,6 @@ export function useEnsPermissions() {
     revokeTextRole: (name: string, secondary: string) => grantTextRole(name, secondary, false),
     updateServiceText,
     simulateForbiddenWrites,
+    inspectName,
   };
 }
