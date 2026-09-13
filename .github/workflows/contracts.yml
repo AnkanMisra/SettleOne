@@ -128,7 +128,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Slither
-        uses: crytic/slither-action@v0.4.0
+        uses: crytic/slither-action@v0.4.2
         with:
           target: contracts/
           slither-args: --filter-paths "node_modules|mocks" --exclude timestamp
