@@ -2,7 +2,9 @@
 
 Prepare contractor payments as a draft, approve the exact list, then settle one Arc Testnet USDC batch. A person types every amount. The wallet is the only spender.
 
-This is the ETHOnline 2026 Continuity product. It is not the old HackMoney Yellow path, and it is not an ENS prize page.
+Live app: [settleone.vercel.app](https://settleone.vercel.app)
+
+This is not the old HackMoney Yellow path, and it is not an ENS prize page.
 
 ## What it does
 
