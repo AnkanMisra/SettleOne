@@ -114,5 +114,3 @@ backend/     Axum API and SQLite
 contracts/   SessionSettlement and Hardhat tests
 docs/        evidence, architecture, sponsor notes
 ```
-
-Code for ETHOnline 2026 landed on `main` in [PR 34](https://github.com/AnkanMisra/SettleOne/pull/34). Follow-up ENS/Graph UI is in [PR 35](https://github.com/AnkanMisra/SettleOne/pull/35).
