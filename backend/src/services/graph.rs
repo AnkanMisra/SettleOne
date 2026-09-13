@@ -18,6 +18,9 @@ impl GraphService {
         }
     }
     pub fn from_env() -> Result<Self, AppError> {
+        let full = std::env::var("GRAPH_SUBGRAPH_URL")
+            .ok()
+            .filter(|value| value.starts_with("https://"));
         let key = std::env::var("GRAPH_API_KEY")
             .ok()
             .filter(|value| !value.is_empty());
@@ -30,8 +33,10 @@ impl GraphService {
                 .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .map_err(|_| AppError::InternalServerError("HTTP client unavailable".into()))?,
-            endpoint: key.map(|key| {
-                format!("https://gateway.thegraph.com/api/{key}/subgraphs/id/{subgraph}")
+            endpoint: full.or_else(|| {
+                key.map(|key| {
+                    format!("https://gateway.thegraph.com/api/{key}/subgraphs/id/{subgraph}")
+                })
             }),
         })
     }

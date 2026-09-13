@@ -3,7 +3,17 @@
 import { useState } from 'react';
 import { useAccount, usePublicClient, useWalletClient, useSwitchChain } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
-import { BaseError, ContractFunctionRevertedError, getAddress, isAddress } from 'viem';
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  createWalletClient,
+  getAddress,
+  http,
+  isAddress,
+  parseEther,
+  type Hex,
+} from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { normalize } from 'viem/ens';
 import {
   SERVICE_METADATA_KEY,
@@ -151,6 +161,121 @@ export function useEnsPermissions() {
     }
   }
 
+  async function fundSecondary(secondary: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!wallet || !address || !sepoliaClient) throw new Error('Connect the owner on Sepolia');
+      if (!isAddress(secondary)) throw new Error('Generate a secondary first');
+      await requireSepolia();
+      const hash = await wallet.sendTransaction({
+        account: address,
+        chain: sepolia,
+        to: getAddress(secondary),
+        value: parseEther('0.002'),
+      });
+      const receipt = await sepoliaClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error('Funding the secondary reverted');
+      note(`Funded ${secondary} with 0.002 ETH. tx ${hash}`);
+      return hash;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Could not fund secondary';
+      setError(message);
+      note(message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function secondaryClient(privateKey: Hex) {
+    if (!sepoliaClient) throw new Error('Sepolia RPC is unavailable');
+    const account = privateKeyToAccount(privateKey);
+    return createWalletClient({
+      account,
+      chain: sepolia,
+      transport: http(sepolia.rpcUrls.default.http[0]),
+    });
+  }
+
+  async function updateServiceTextAsSecondary(name: string, value: string, privateKey: Hex) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!sepoliaClient) throw new Error('Sepolia RPC is unavailable');
+      const client = secondaryClient(privateKey);
+      const resolver = await currentResolver(name);
+      note(`Secondary ${client.account.address} resolved ${resolver} before setText`);
+      const hash = await client.writeContract({
+        address: resolver,
+        abi: permissionedResolverAbi,
+        functionName: 'setText',
+        args: [ensNode(name), SERVICE_METADATA_KEY, value],
+      });
+      const receipt = await sepoliaClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error('Text update reverted');
+      note(`Secondary updated ${SERVICE_METADATA_KEY}. tx ${hash}`);
+      return hash;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Secondary text update failed';
+      setError(message);
+      note(message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function simulateForbiddenAsSecondary(name: string, payout: string, privateKey: Hex) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!sepoliaClient) throw new Error('Sepolia RPC is unavailable');
+      if (!isAddress(payout)) throw new Error('Payout address required for the forbidden simulation');
+      const account = privateKeyToAccount(privateKey);
+      const resolver = await currentResolver(name);
+      const node = ensNode(name);
+      const attempts = [
+        sepoliaClient.simulateContract({
+          account: account.address,
+          address: resolver,
+          abi: permissionedResolverAbi,
+          functionName: 'setAddr',
+          args: [node, getAddress(payout)],
+        }),
+        sepoliaClient.simulateContract({
+          account: account.address,
+          address: resolver,
+          abi: permissionedResolverAbi,
+          functionName: 'setText',
+          args: [node, 'url', 'https://example.invalid'],
+        }),
+      ];
+      const results = await Promise.allSettled(attempts);
+      results.forEach((result, index) => {
+        const label = index === 0 ? 'setAddr payout' : 'setText url';
+        if (result.status === 'fulfilled') {
+          note(`${label} unexpectedly simulated successfully. Do not claim this grant is narrow.`);
+        } else {
+          const revert = result.reason instanceof BaseError
+            ? result.reason.walk((e) => e instanceof ContractFunctionRevertedError)
+            : null;
+          note(
+            revert instanceof ContractFunctionRevertedError
+              ? `${label} reverted in simulation: ${revert.shortMessage}`
+              : `${label} could not be verified: RPC failure is not permission evidence.`,
+          );
+        }
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Forbidden write simulation failed';
+      setError(message);
+      note(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function inspectName(name: string) {
     setBusy(true);
     setError(null);
@@ -190,5 +315,8 @@ export function useEnsPermissions() {
     updateServiceText,
     simulateForbiddenWrites,
     inspectName,
+    fundSecondary,
+    updateServiceTextAsSecondary,
+    simulateForbiddenAsSecondary,
   };
 }
