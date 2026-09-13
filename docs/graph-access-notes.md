@@ -1,6 +1,6 @@
 # Agent0 Graph access investigation
 
-Checked 2026-09-13 at approximately 06:46 UTC. Live Ethereum Sepolia Graph queries succeeded. The returned index is stale: its latest block timestamp is 2026-03-04. This proves provider access and real indexed records, but does not prove current agent eligibility or a successful payment.
+Checked 2026-09-13 at approximately 06:46 UTC, and re-probed at 13:02 UTC. Live Ethereum Sepolia Graph queries still succeed. The index is still stale: latest block timestamp 2026-03-04T22:00:00Z (about 193 days old). This proves provider access and real indexed records. It does not prove current agent eligibility. Inclusion is forced to `exclude` while stale. Amounts are never taken from Graph.
 
 ## Access and deployment
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { isAddress, parseUnits } from 'viem';
 import { ENSInput } from './ENSInput';
 
@@ -12,13 +12,21 @@ interface PaymentFormProps {
   }) => Promise<unknown> | void;
   isLoading: boolean;
   onCancel?: () => void;
+  suggestedRecipient?: string;
 }
 
-export function PaymentForm({ onSubmit, isLoading, onCancel }: PaymentFormProps) {
+export function PaymentForm({ onSubmit, isLoading, onCancel, suggestedRecipient }: PaymentFormProps) {
   const [recipient, setRecipient] = useState('');
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (suggestedRecipient) {
+      setRecipient(suggestedRecipient);
+      setResolvedAddress(suggestedRecipient);
+    }
+  }, [suggestedRecipient]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

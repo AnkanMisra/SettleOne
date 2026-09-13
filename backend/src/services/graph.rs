@@ -18,6 +18,9 @@ impl GraphService {
         }
     }
     pub fn from_env() -> Result<Self, AppError> {
+        let full = std::env::var("GRAPH_SUBGRAPH_URL")
+            .ok()
+            .filter(|value| value.starts_with("https://"));
         let key = std::env::var("GRAPH_API_KEY")
             .ok()
             .filter(|value| !value.is_empty());
@@ -30,8 +33,10 @@ impl GraphService {
                 .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .map_err(|_| AppError::InternalServerError("HTTP client unavailable".into()))?,
-            endpoint: key.map(|key| {
-                format!("https://gateway.thegraph.com/api/{key}/subgraphs/id/{subgraph}")
+            endpoint: full.or_else(|| {
+                key.map(|key| {
+                    format!("https://gateway.thegraph.com/api/{key}/subgraphs/id/{subgraph}")
+                })
             }),
         })
     }
@@ -122,6 +127,7 @@ impl GraphService {
                     "active": active,
                     "total_feedback": agent["totalFeedback"],
                     "warning": warning,
+                    "decision": inclusion_decision(fresh, warning.as_deref()),
                 })
             })
             .collect::<Vec<_>>();
@@ -145,6 +151,17 @@ pub fn is_fresh(timestamp: i64, now: i64, max_age: i64) -> bool {
     timestamp <= now && now.saturating_sub(timestamp) <= max_age
 }
 
+/// Stale or warned evidence can never become a payment. Eligible still has no amount.
+pub fn inclusion_decision(fresh: bool, warning: Option<&str>) -> &'static str {
+    if !fresh {
+        "exclude"
+    } else if warning.is_some() {
+        "manual_review"
+    } else {
+        "eligible"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +170,13 @@ mod tests {
     fn future_index_is_not_current_evidence() {
         assert!(!is_fresh(200, 100, 1000));
         assert!(is_fresh(100, 100, 1000));
+    }
+
+    #[test]
+    fn stale_or_warned_agents_cannot_be_included() {
+        assert_eq!(inclusion_decision(false, None), "exclude");
+        assert_eq!(inclusion_decision(true, Some("localhost")), "manual_review");
+        assert_eq!(inclusion_decision(true, None), "eligible");
     }
 
     #[test]

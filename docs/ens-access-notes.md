@@ -61,7 +61,7 @@ If the owner needs a resolver, the factory exposes `deployProxy(address implemen
 
 ## Live verification limits
 
-Read-only `eth_getCode` requests to PublicNode, rpc.sepolia.org, and sepolia.drpc.org all returned HTTP 403 from this environment. Blockscout address API GET requests also returned HTTP 403. Official GitHub raw deployment artifacts were fetched successfully, and the listed signatures and addresses matched. No funded signer or owned ENS name was supplied to this investigation. No name registration, resolver deployment, record mutation, live payout resolution, or grant/revoke transaction was performed.
+Read-only `eth_getCode` requests to PublicNode, rpc.sepolia.org, and sepolia.drpc.org all returned HTTP 403 from this environment. Blockscout address API GET requests also returned HTTP 403. Official GitHub raw deployment artifacts were fetched successfully, and the listed signatures and addresses matched. No funded signer or owned ENS name was supplied to this investigation. No name registration, resolver deployment, record mutation, live payout resolution, or grant/revoke transaction was performed. A later read of payer `0xe9a6ba0f611ef6c934624b52bd3843dfebbb98e6` on Sepolia returned `0` ETH, so this machine still cannot send identity transactions. Use the Identity panel after a Sepolia faucet and an owned name.
 
 ## ETHOnline 2026 requirements
 

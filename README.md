@@ -1,520 +1,118 @@
 # SettleOne
 
-ETHOnline 2026 continuity work is in progress on `feat/ethonline-2026-continuity`. The current payment path is a human-approved Arc Testnet USDC batch, not Yellow state channels and not a live hosted demo.
+Prepare contractor payments as a draft, approve the exact list, then settle one Arc Testnet USDC batch. A person types every amount. The wallet is the only spender.
 
-Read these first:
+This is the ETHOnline 2026 Continuity product. It is not the old HackMoney Yellow path, and it is not an ENS prize page.
 
-- `docs/ethonline-2026-status.md` implemented vs blocked
-- `docs/runbook-live-demo.md` how to deploy and prove on Arc once keys exist
-- `docs/demo-script.md` 2-4 minute recording outline
-- `docs/ai-disclosure.md` AI-assisted files
-- `docs/review-fixes.md` contract trust, signing-lock recovery, and deployment settings
-- `docs/ens-access-notes.md` and `docs/graph-access-notes.md`
+## What it does
 
-Arc Testnet SessionSettlement is at `0x178daba1115968e073cff667d276c752b319b019`. A funded 1 USDC batch is in `0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1`. There is still no public hosting URL or demo recording.
+You sign in with a personal-sign message. That authenticates the draft. It does not move funds.
 
-The section below is the original HackMoney 2026 writeup. Treat Yellow, LI.FI, and Base Sepolia claims as pre-event history, not as the 2026 critical path.
+You add recipients and amounts under a budget. Prepare locks an immutable `settleBatch` preview: recipients, amounts, Arc Testnet, official USDC, expiry, total. You tick that the preview is correct, approve USDC, and sign the batch.
 
----
+The backend checks the Arc receipt: payer, contract, calldata, USDC `Transfer`, `DraftPayment`, `DraftSettled`. An unknown hash cannot mark the draft submitted.
 
-### ENS prize winner at ETHGlobal HackMoney 2026
+Identity writes stay on Sepolia. Payments stay on Arc. Those are separate transactions.
 
-### Send USDC anywhere. Settle once.
-
-A cross-chain, identity-powered USDC payment platform that batched off-chain payments through Yellow Network state channels and settled them in a single on-chain transaction on Base. Built for ETHGlobal HackMoney 2026.
-
----
-
-## The Problem
-
-| Pain Point | Impact |
-|---|---|
-| **High gas fees** | Every payment costs a separate transaction — prohibitive for frequent or micro-payments |
-| **Fragmented chains** | Users juggle bridges, different tokens, and incompatible wallets across L1s and L2s |
-| **Raw hex addresses** | Sending to `0x699e...1082` is error-prone and hostile to everyday users |
-
-SettleOne eliminates all three by combining **off-chain state channels**, **ENS identity**, **cross-chain routing**, and **batch on-chain settlement** into one seamless flow.
-
----
-
-## How It Works
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Frontend as Next.js Frontend
-    participant Yellow as Yellow Network<br/>(ClearNode)
-    participant Backend as Rust Backend<br/>(Axum)
-    participant Contract as SessionSettlement<br/>(Base Sepolia)
-
-    User->>Frontend: 1. Connect Wallet
-    Frontend->>Yellow: 2. Open State Channel
-    Yellow-->>Frontend: Session Confirmed
-
-    loop Off-chain Payments
-        User->>Frontend: 3. Enter ENS name + amount
-        Frontend->>Backend: Resolve ENS
-        Backend-->>Frontend: 0x address
-        Frontend->>Yellow: Submit payment state
-    end
-
-    User->>Frontend: 4. Click "Settle All"
-    Frontend->>Contract: 5. finalizeSessionBatch()
-    Contract-->>Frontend: Tx receipt
-    Frontend-->>User: Toast notification (click to view on explorer)
-```
-
-### Five Steps to Settlement
-
-| Step | Action | Where |
-|:---:|---|---|
-| **1** | Connect wallet (MetaMask / Phantom) | Frontend |
-| **2** | Start session — opens a Yellow Network state channel | Off-chain |
-| **3** | Add payments — type `vitalik.eth` + amount, instant off-chain | Off-chain |
-| **4** | (Optional) Cross-chain quote via LI.FI if bridging is needed | Backend |
-| **5** | Settle once — one on-chain batch transaction settles everything | On-chain |
-
----
-
-## Architecture
-
-```mermaid
-graph TB
-    subgraph Browser["User Browser"]
-        FE["Next.js 16 Frontend<br/>React 19 · wagmi · viem"]
-    end
-
-    subgraph OffChain["Off-Chain Layer"]
-        YN["Yellow Network<br/>@erc7824/nitrolite<br/>State Channels"]
-    end
-
-    subgraph Backend["Rust Backend"]
-        AX["Axum 0.7 API Server"]
-        SS["Session Store<br/>(Arc&lt;SessionStore&gt;)"]
-        ENS["ENS Service<br/>(ensdata.net + cache)"]
-        LF["LI.FI Service<br/>(Cross-chain quotes)"]
-    end
-
-    subgraph OnChain["Base Sepolia"]
-        SC["SessionSettlement.sol<br/>0xe66B...0cB2"]
-        USDC["MockUSDC<br/>0xc5c8...f52"]
-    end
-
-    FE -->|WebSocket| YN
-    FE -->|HTTP/REST| AX
-    FE -->|wagmi/viem| SC
-    SC -->|SafeERC20| USDC
-    AX --> SS
-    AX --> ENS
-    AX --> LF
-    LF -->|API| LIFI["LI.FI API"]
-
-    style FE fill:#1a1a2e,stroke:#e94560,color:#fff
-    style YN fill:#1a1a2e,stroke:#f5c542,color:#fff
-    style SC fill:#1a1a2e,stroke:#0052ff,color:#fff
-    style AX fill:#1a1a2e,stroke:#00d2ff,color:#fff
-```
-
----
-
-## Key Features
-
-| Feature | Description |
-|---|---|
-| **ENS-Powered Payments** | Send USDC to `name.eth` — resolved on both frontend (viem) and backend (ensdata.net API with TTL cache) |
-| **Session-Based UX** | Batch unlimited payments off-chain during a session, settle all at once |
-| **Yellow Network State Channels** | Full `@erc7824/nitrolite` SDK — auth, session creation, state updates, close |
-| **Cross-Chain Routing** | LI.FI quotes with fee breakdown, estimated time, and "Bonus" display for negative fees |
-| **Batch On-Chain Settlement** | Single `finalizeSessionBatch()` call transfers USDC to all recipients |
-| **Security Hardened** | Reentrancy guards, integer overflow protection, allowance pre-validation, tx confirmation waiting |
-| **Toast Notifications** | Clickable toast opens the correct block explorer per chain |
-| **Dynamic Explorer URLs** | Supports Base Sepolia, Base Mainnet, Ethereum, and Sepolia |
-
----
-
-## Tech Stack
-
-| Layer | Technology | Details |
-|---|---|---|
-| **Frontend** | Next.js 16 · React 19 · TypeScript | Tailwind CSS v4, wagmi 3, viem, RainbowKit, react-hot-toast |
-| **Backend** | Rust · Axum 0.7 · Tokio | reqwest, serde, thiserror/anyhow, TTL caching |
-| **Contracts** | Solidity 0.8.20 · Hardhat | OpenZeppelin (ReentrancyGuard, SafeERC20, Ownable) |
-| **Off-Chain** | Yellow Network | `@erc7824/nitrolite` state channels via ClearNode WebSocket |
-| **Cross-Chain** | LI.FI API | Quote fetching, fee breakdown, multi-chain routing |
-| **Identity** | ENS | Forward + reverse resolution, avatar fetching |
-
----
-
-## Sponsor Tracks
-
-### 1. Yellow Network — Off-Chain Payments
-
-Full `@erc7824/nitrolite` SDK integration with ClearNode WebSocket (`wss://clearnet.yellow.com/ws`).
-
-| Capability | Implementation |
-|---|---|
-| Authentication | Challenge-response flow via `createAuthRequestMessage` / `createAuthVerifyMessageFromChallenge` |
-| Session Creation | `createAppSessionMessage` with ClearNode confirmation (30s timeout) |
-| State Updates | `createSubmitAppStateMessage` with proper allocations (sender=0, recipient=cumulative) |
-| Session Close | `createCloseAppSessionMessage` returns settlement data |
-| Heartbeat | `createPingMessageV2` keepalive |
-
-**Code Review**: Greptile **5/5** confidence score — *"Production-ready for hackathon scope"* (PR #13)
-
-### 2. Circle / Arc — USDC Settlement
+## Live Arc Testnet
 
 | Item | Value |
-|---|---|
-| Token | USDC (6 decimals) via `MockUSDC.sol` |
-| Contract | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` |
-| Network | Base Sepolia (Chain ID: 84532) |
-| Explorer | [View on BaseScan](https://sepolia.basescan.org/address/0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2) |
+| --- | --- |
+| Chain | Arc Testnet, id `5042002` |
+| SessionSettlement | [`0x178daba1115968e073cff667d276c752b319b019`](https://testnet.arcscan.app/address/0x178daba1115968e073cff667d276c752b319b019) |
+| USDC | `0x3600000000000000000000000000000000000000` (6 decimals) |
+| Deploy | [`0x4c8bbef9de81461b1a6a2eee869d7793e9ae6515f2f5c96f9dc19d21e4a89b6a`](https://testnet.arcscan.app/tx/0x4c8bbef9de81461b1a6a2eee869d7793e9ae6515f2f5c96f9dc19d21e4a89b6a) |
+| 1 USDC batch | [`0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1`](https://testnet.arcscan.app/tx/0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1) |
 
-### 3. ENS — Identity-Powered Payments
+Gas on Arc is USDC. Fund the payer at the [Circle faucet](https://faucet.circle.com/). Pick Arc Testnet.
 
-- **Frontend**: `useENS` hook with debounced resolution via viem mainnet client
-- **Backend**: `EnsService` singleton resolving via ensdata.net API with TTL-based cache
-- **UI**: `ENSInput` component with real-time resolution, avatars, loading states
+## How a batch moves
 
-### 4. LI.FI — Cross-Chain Routing
+1. Connect on Arc Testnet.
+2. Sign in and create a draft with a budget.
+3. Add payments. Optional: resolve a Sepolia ENS name to a pinned address.
+4. Prepare the exact preview.
+5. Approve the preview, then USDC allowance, then `settleBatch`.
+6. The API verifies the receipt and events.
 
-- **Backend proxy**: `LifiService` fetches quotes from `li.quest/v1` API
-- **Frontend**: `QuoteDisplay` component showing send/receive amounts, bridge fees (%), gas estimate, and estimated time
-- **Negative fee handling**: Displayed as green "Bonus" when user receives more than expected
+States: `draft` → `awaiting_approval` → `signing` → `submitted` → `confirmed` or `failed`.
 
----
+A second tab cannot sign the same draft. Reset of a locked draft waits until expiry and `isDraftSettled` is false.
 
-## Test Suite
+## Stack
 
-**47 tests** across the project — all passing.
+| Layer | Tech |
+| --- | --- |
+| App | Next.js, React, TypeScript, wagmi, viem |
+| API | Rust, Axum, SQLite |
+| Contract | Solidity 0.8.20, Hardhat, `settleBatch` |
 
-```mermaid
-pie title Test Distribution
-    "Smart Contract Tests" : 27
-    "Backend Tests" : 20
-```
+Yellow Network, LI.FI, and Base Sepolia MockUSDC are leftover from HackMoney. They are not on this payment path.
 
-### Smart Contract Tests (27)
+## Sponsor work (honest)
 
-| Category | Count | Coverage |
-|---|:---:|---|
-| Deployment | 4 | Constructor validation, immutable state |
-| Session Management | 3 | Start, duplicate prevention |
-| Single Settlement | 6 | Success path, error cases |
-| Batch Settlement | 8 | Multi-recipient, overflow protection, allowance validation |
-| Admin Functions | 3 | Emergency withdraw, access control |
-| View Functions | 2 | Status queries, metadata |
-| Security | 1 | Integer overflow protection |
+**Arc.** Working app, architecture notes, and a funded testnet batch. Continuity mainnet by 30 September is not done. A 2–4 minute human-voice video is still required for ETHGlobal.
 
-### Backend Tests (20)
+**ENSv2.** Sepolia helpers and an Identity panel: resolve the current resolver, grant `service.metadata` only, secondary text update, forbidden `setAddr`, revoke. Mainnet `ankanmisra.eth` is not a Sepolia registration. No grant or revoke hash is in this repo yet.
 
-| Category | Coverage |
-|---|---|
-| Utility Functions | Address validation, ENS validation, formatting |
-| Session Models | Creation, payment addition, total recalculation |
-| Session Store | CRUD operations, status transitions |
-| ENS Resolution | Real API calls, caching behavior, error handling |
+**The Graph / Agent0.** Server review of subgraph `6wQRC7geo9XYAhckfmfo8kbMRLeWU8KQd3XsJqFKmZLT`. A live index dated 4 March 2026 is treated as stale and mapped to `exclude`. Graph never types an amount. Needs `GRAPH_API_KEY` or `GRAPH_SUBGRAPH_URL` on the server.
+
+## Run it
+
+Docker:
 
 ```bash
-cd contracts && pnpm test    # 27 passing
-cd backend && cargo test     # 20 passing
-```
-
----
-
-## Security
-
-| Protection | Location | Description |
-|---|---|---|
-| **Reentrancy Guard** | `SessionSettlement.sol` | OpenZeppelin `ReentrancyGuard` on all state-changing functions |
-| **Integer Overflow** | `_calculateAndValidateBatch()` | `unchecked` block with explicit overflow check + `BatchAmountOverflow` error |
-| **Allowance Pre-Validation** | `finalizeSession` / `finalizeSessionBatch` | Checks allowance before any state changes |
-| **Tx Confirmation Wait** | `useSettlement.ts` | `waitForTransactionReceipt` with 1 confirmation before proceeding |
-| **WebSocket Guards** | `yellow.ts` | Duplicate connection prevention, disconnect promise rejection |
-| **Safe BigInt Parsing** | `QuoteDisplay.tsx` | `safeParseBigInt()` validates input before `BigInt()` |
-| **Custom Errors** | `SessionErrors.sol` | 10 gas-efficient custom errors (no revert strings) |
-
----
-
-## Deployed Contracts
-
-| Contract | Address | Network | Explorer |
-|---|---|---|---|
-| **SessionSettlement** | `0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2` | Base Sepolia | [View](https://sepolia.basescan.org/address/0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2) |
-| **MockUSDC** | `0xc5c8977491c2dc822F4f738356ec0231F7100f52` | Base Sepolia | [View](https://sepolia.basescan.org/address/0xc5c8977491c2dc822F4f738356ec0231F7100f52) |
-
----
-
-## Project Structure
-
-```
-SettleOne/
-├── frontend/                    # Next.js 16 + React 19
-│   └── src/
-│       ├── app/                 # Pages, layout, globals
-│       ├── components/          # ConnectButton, Providers, features/
-│       │   └── features/        # ENSInput, PaymentForm, SessionCard, ChainSelector, QuoteDisplay
-│       ├── hooks/               # useSession, useSettlement, useYellow, useENS, useQuote, useDebounce
-│       ├── lib/                 # api.ts, contracts.ts, wagmi.ts, yellow.ts (1025 lines)
-│       └── types/               # TypeScript definitions
-├── backend/                     # Rust + Axum
-│   └── src/
-│       ├── api/                 # Handlers: session, ens, quote, error
-│       ├── services/            # ENS (ensdata.net + cache), LI.FI, Session Store
-│       ├── models/              # Session, Payment, Status enums
-│       ├── config/              # Environment configuration
-│       ├── utils/               # Address/ENS validation
-│       └── main.rs              # AppState { SessionStore, EnsService }
-├── contracts/                   # Solidity + Hardhat
-│   ├── contracts/               # SessionSettlement, interfaces, libraries, mocks
-│   ├── scripts/                 # Multi-network deploy script
-│   └── test/                    # 27 comprehensive tests
-└── docs/                        # Architecture, phases, session log, sponsor details
-```
-
----
-
-## Getting Started
-
-Choose **Docker** (recommended — no toolchain required) or **manual** setup.
-
----
-
-### Docker Setup (Recommended)
-
-> Only requires [Docker Engine 24+](https://docs.docker.com/engine/install/) or [Docker Desktop](https://www.docker.com/products/docker-desktop/). No Rust, Node.js, or pnpm needed.
-
-```bash
-# 1. Clone the repo
 git clone https://github.com/AnkanMisra/SettleOne.git
 cd SettleOne
-
-# 2. Create your env file (safe defaults — works out of the box)
 cp .env.docker.example .env.docker
-
-# 3. Build and start everything
 docker compose up --build
 ```
 
-```mermaid
-flowchart LR
-    subgraph cmd ["3 commands to run the full stack"]
-        A["git clone"] --> B["cp .env.docker.example\n.env.docker"] --> C["docker compose\nup --build"]
-    end
+App: `http://localhost:3000`. API: `http://localhost:3001`.
 
-    subgraph running ["Running at"]
-        FE["frontend\nlocalhost:3000"]
-        BE["backend\nlocalhost:3001"]
-    end
+Set `ARC_SETTLEMENT_ADDRESS=0x178daba1115968e073cff667d276c752b319b019` and `SETTLEMENT_ADMIN` to the contract owner. `SETTLEMENT_ADMIN` is a public address, not a private key.
 
-    C --> FE & BE
-```
-
-#### Docker service overview
-
-```mermaid
-graph TB
-    Browser["Browser"]
-
-    subgraph Host ["Your Machine (host ports)"]
-        P3000["localhost:3000"]
-        P3001["localhost:3001"]
-        P8545["localhost:8545\n(optional)"]
-    end
-
-    subgraph Net ["Docker Network: settleonce"]
-        FE["frontend\nNext.js · React 19\nport 3000"]
-        BE["backend\nRust · Axum\nport 3001"]
-        CT["contracts\nHardhat\nport 8545\n--profile contracts"]
-    end
-
-    subgraph Ext ["External (HTTPS / WSS)"]
-        ENS["ensdata.net"]
-        LIFI["li.quest/v1"]
-        YN["Yellow ClearNode\nWSS"]
-        RPC["Base Sepolia RPC"]
-    end
-
-    Browser --> P3000 --> FE
-    Browser --> P3001 --> BE
-    FE -->|"http://backend:3001\ninternal network"| BE
-    BE --> ENS & LIFI
-    Browser -->|WSS| YN
-    Browser -->|wagmi/viem| RPC
-    P8545 -.->|dev only| CT
-```
-
-#### Dev mode — hot reload
+Manual:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant Vol as Volume Mount
-    participant BE as backend (cargo-watch)
-    participant FE as frontend (next dev)
-
-    Dev->>Vol: Save .rs file
-    Vol-->>BE: Change propagated
-    BE->>BE: cargo build (incremental)
-    BE->>BE: Axum server restarts
-
-    Dev->>Vol: Save .tsx file
-    Vol-->>FE: Change propagated
-    FE-->>Dev: Browser updates instantly (HMR)
-```
-
-#### Contracts (optional profile)
-
-```bash
-# Compile
-docker compose --profile contracts run --rm contracts pnpm compile
-
-# Test
-docker compose --profile contracts run --rm contracts pnpm test
-
-# Local Hardhat node on :8545
-docker compose --profile contracts run --rm --service-ports contracts npx hardhat node
-
-# Deploy to Base Sepolia (needs PRIVATE_KEY in .env.docker)
-docker compose --profile contracts run --rm contracts pnpm deploy:base-sepolia
-```
-
-Full Docker documentation: [`docs/docker.md`](docs/docker.md)
-
----
-
-### Manual Setup
-
-#### Prerequisites
-
-- **Node.js** 18+
-- **Rust** 1.75+
-- **pnpm** (package manager)
-
-#### 1. Clone & Install
-
-```bash
-git clone https://github.com/AnkanMisra/SettleOne.git
-cd SettleOne
-```
-
-#### 2. Frontend
-
-```bash
-cd frontend
-pnpm install
-pnpm dev          # http://localhost:3000
-```
-
-#### 3. Backend
-
-```bash
+# API
 cd backend
-cp .env.example .env
-# Edit .env with your RPC URL and API keys
-cargo run         # http://localhost:3001
+DATABASE_PATH=settleone.sqlite ARC_RPC_URL=https://rpc.testnet.arc.network \
+  ARC_SETTLEMENT_ADDRESS=0x178daba1115968e073cff667d276c752b319b019 \
+  cargo run
+
+# App
+cd frontend
+NEXT_PUBLIC_API_URL=http://localhost:3001 ./node_modules/.bin/next dev
 ```
 
-#### 4. Smart Contracts
+More Docker detail is in [`docs/docker.md`](docs/docker.md).
+
+## Tests
 
 ```bash
-cd contracts
-pnpm install
-pnpm compile
-pnpm test         # 27 tests
+cargo test --manifest-path backend/Cargo.toml
+cd contracts && ./node_modules/.bin/hardhat test test/DraftSettlement.test.ts
+cd frontend && ./node_modules/.bin/tsc --noEmit
 ```
 
-### Environment Variables
+## Docs
 
-#### Backend (`backend/.env`)
+- [`docs/arc-continuity-evidence.md`](docs/arc-continuity-evidence.md): live Arc hashes
+- [`docs/architecture.md`](docs/architecture.md): payment path
+- [`docs/review-fixes.md`](docs/review-fixes.md): signing lock and contract registration
+- [`docs/ens-access-notes.md`](docs/ens-access-notes.md): Sepolia ENSv2
+- [`docs/graph-access-notes.md`](docs/graph-access-notes.md): Agent0 index and freshness
+- [`docs/ai-disclosure.md`](docs/ai-disclosure.md): AI-assisted files
+- [`docs/demo-script.md`](docs/demo-script.md): recording outline
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3001` | Server port |
-| `ETH_RPC_URL` | `https://eth.llamarpc.com` | Ethereum RPC for ENS |
-| `LIFI_API_URL` | `https://li.quest/v1` | LI.FI API base URL |
-| `LIFI_API_KEY` | — | LI.FI API key (optional) |
-| `SETTLEMENT_CONTRACT_ADDRESS` | `0xe66B...0cB2` | Deployed contract |
+## Repo layout
 
-#### Frontend (`frontend/.env.local`)
-
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | Backend URL (default: `http://localhost:3001`) |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | WalletConnect project ID |
-
-#### Docker (`.env.docker`)
-
-| Variable | Default | Description |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://backend:3001` | Must use service name, not `localhost` |
-| `LIFI_API_KEY` | — | Optional, improves LI.FI rate limits |
-| `NEXT_PUBLIC_ALCHEMY_ID` | — | Optional Alchemy RPC key |
-| `PRIVATE_KEY` | — | Only needed for contract deployment |
-
----
-
-## Code Quality
-
-| Check | Command | Status |
-|---|---|---|
-| Rust format | `cargo fmt --check` | Passing |
-| Rust lint | `cargo clippy -- -D warnings` | 0 warnings |
-| Rust tests | `cargo test` | **20/20** passing |
-| Frontend build | `pnpm build` | Passing |
-| Frontend lint | `pnpm lint` | Passing |
-| Contract tests | `pnpm test` | **27/27** passing |
-| Greptile Review (PR #13) | Yellow SDK integration | **5/5** confidence |
-| Greptile Review (PR #14) | Backend polish + ENS | **4.5/5** confidence |
-
----
-
-## Project Completion
-
-```mermaid
-gantt
-    title SettleOne Development Progress
-    dateFormat X
-    axisFormat %s%%
-
-    section Components
-    Smart Contracts          :done, 0, 100
-    Frontend                 :done, 0, 95
-    Backend                  :done, 0, 90
-    SDK Integration          :done, 0, 90
-    Testing & QA             :done, 0, 70
-    Documentation            :done, 0, 95
-    Deployment               :done, 0, 80
+```
+frontend/    Next.js app
+backend/     Axum API and SQLite
+contracts/   SessionSettlement and Hardhat tests
+docs/        evidence, architecture, sponsor notes
 ```
 
-| Component | Progress | Highlights |
-|---|:---:|---|
-| **Smart Contracts** | 100% | Deployed, security hardened, 27 tests, custom errors |
-| **Frontend** | 95% | Full UI, Yellow SDK, toast notifications, dynamic explorer |
-| **Backend** | 90% | Real ENS resolution, shared state, 20 tests, rate-limit documented |
-| **SDK Integration** | 90% | Yellow complete, LI.FI complete, ENS complete |
-| **Testing & QA** | 70% | 47 total tests (27 contract + 20 backend) |
-| **Documentation** | 95% | 8 docs files, comprehensive README, session log |
-| **Deployment** | 80% | Contracts on Base Sepolia, frontend/backend deployment pending |
-| **Overall** | **~97%** | |
-
----
-
-## Links
-
-| Resource | URL |
-|---|---|
-| GitHub Repository | [github.com/AnkanMisra/SettleOne](https://github.com/AnkanMisra/SettleOne) |
-| SessionSettlement Contract | [BaseScan](https://sepolia.basescan.org/address/0xe66B3Fa5F2b84df7CbD288EB3BC91feE48a90cB2) |
-| MockUSDC Contract | [BaseScan](https://sepolia.basescan.org/address/0xc5c8977491c2dc822F4f738356ec0231F7100f52) |
-| Yellow Network Docs | [docs.yellow.org](https://docs.yellow.org) |
-| LI.FI Docs | [docs.li.fi](https://docs.li.fi) |
-| ENS Docs | [docs.ens.domains](https://docs.ens.domains) |
-
----
-
-Built for **ETHGlobal HackMoney 2026**.
+Code for ETHOnline 2026 landed on `main` in [PR 34](https://github.com/AnkanMisra/SettleOne/pull/34). Follow-up ENS/Graph UI is in [PR 35](https://github.com/AnkanMisra/SettleOne/pull/35).

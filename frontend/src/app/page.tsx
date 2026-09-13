@@ -24,6 +24,7 @@ export default function Home() {
   const [budget, setBudget] = useState('10');
   const [error, setError] = useState('');
   const [approved, setApproved] = useState<string | null>(null);
+  const [suggestedRecipient, setSuggestedRecipient] = useState('');
   const session = flow.session;
   const busy = flow.isLoading || settlement.isPending || deploy.busy;
 
@@ -143,6 +144,7 @@ export default function Home() {
             {session.status === 'draft' && (
               <PaymentForm
                 isLoading={busy}
+                suggestedRecipient={suggestedRecipient}
                 onSubmit={async (data) => {
                   setError('');
                   const saved = await flow.addPayment(data.recipient, data.amount, data.recipientENS);
@@ -159,7 +161,12 @@ export default function Home() {
           </p>
         )}
         <IdentityPanel />
-        <GraphReviewPanel />
+        <GraphReviewPanel
+          onProposeRecipient={(wallet, agentId) => {
+            setSuggestedRecipient(wallet);
+            setError(`Graph proposed ${agentId} as a wallet only. Type the amount yourself.`);
+          }}
+        />
         <p className="text-sm text-gray-500">
           Testnet payments only. USDC also pays Arc gas.{' '}
           <a className="underline" href="https://faucet.circle.com" target="_blank" rel="noreferrer">
