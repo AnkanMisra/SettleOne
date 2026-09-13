@@ -6,5 +6,5 @@ pub mod session;
 
 pub mod auth;
 
-pub mod settlement;
 pub mod graph;
+pub mod settlement;

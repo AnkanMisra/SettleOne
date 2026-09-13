@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePublicClient } from 'wagmi';
 import { normalize } from 'viem/ens';
 import { isAddress } from 'viem';
@@ -95,40 +95,43 @@ export function useENS(
 }
 
 export function useENSName(address: string | undefined) {
-  const [state, setState] = useState<{ name: string | null; isLoading: boolean }>({
-    name: null,
-    isLoading: false,
-  });
-  const cancelledRef = useRef(false);
+  const [resolved, setResolved] = useState<{
+    address: string;
+    name: string | null;
+  } | null>(null);
   const publicClient = usePublicClient({ chainId: sepolia.id });
 
   useEffect(() => {
-    cancelledRef.current = false;
     if (!address || !isAddress(address) || !publicClient) {
       return;
     }
-    setState({ name: null, isLoading: true });
+    const target = address;
+    let cancelled = false;
     publicClient
       .getEnsName({
-        address,
+        address: target,
         universalResolverAddress: UNIVERSAL_RESOLVER,
       })
       .then((ensName) => {
-        if (!cancelledRef.current) {
-          setState({ name: ensName, isLoading: false });
+        if (!cancelled) {
+          setResolved({ address: target, name: ensName });
         }
       })
       .catch(() => {
-        if (!cancelledRef.current) {
-          setState({ name: null, isLoading: false });
+        if (!cancelled) {
+          setResolved({ address: target, name: null });
         }
       });
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
     };
   }, [address, publicClient]);
 
-  return state;
+  const ready = Boolean(address && resolved?.address === address);
+  return {
+    name: ready ? resolved?.name ?? null : null,
+    isLoading: Boolean(address && isAddress(address) && publicClient && !ready),
+  };
 }
 
 export function isValidENS(name: string): boolean {

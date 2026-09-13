@@ -5,9 +5,9 @@ use serde::Serialize;
 
 pub mod ens;
 pub mod error;
+pub mod graph;
 pub mod quote;
 pub mod session;
-pub mod graph;
 pub mod settlement;
 
 /// Health check response

@@ -18,7 +18,9 @@ impl GraphService {
         }
     }
     pub fn from_env() -> Result<Self, AppError> {
-        let key = std::env::var("GRAPH_API_KEY").ok().filter(|value| !value.is_empty());
+        let key = std::env::var("GRAPH_API_KEY")
+            .ok()
+            .filter(|value| !value.is_empty());
         let subgraph = std::env::var("GRAPH_SUBGRAPH_ID")
             .ok()
             .filter(|value| !value.is_empty())
@@ -41,21 +43,24 @@ impl GraphService {
         };
         let selected: Vec<String> = ids
             .iter()
-            .filter(|id| id.len() < 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == ':' || c == '-'))
+            .filter(|id| {
+                id.len() < 64
+                    && id
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == ':' || c == '-')
+            })
             .cloned()
             .collect();
         if selected.is_empty() {
             return Err(AppError::BadRequest("Provide at least one agent id".into()));
         }
-        let query = format!(
-            r#"query PaymentEvidence($ids:[ID!]!) {{
-  _meta {{ deployment block {{ number hash timestamp }} hasIndexingErrors }}
-  agents(where: {{ id_in: $ids }}) {{
+        let query = r#"query PaymentEvidence($ids:[ID!]!) {
+  _meta { deployment block { number hash timestamp } hasIndexingErrors }
+  agents(where: { id_in: $ids }) {
     id chainId agentId owner agentWallet createdAt updatedAt totalFeedback
-    registrationFile {{ name active mcpEndpoint a2aEndpoint supportedTrusts }}
-  }}
-}}"#
-        );
+    registrationFile { name active mcpEndpoint a2aEndpoint supportedTrusts }
+  }
+}"#;
         let response = self
             .client
             .post(url)
@@ -64,7 +69,9 @@ impl GraphService {
             .await
             .map_err(|_| AppError::Unavailable("Graph gateway unavailable".into()))?;
         if !response.status().is_success() {
-            return Err(AppError::Unavailable("Graph gateway rejected the request".into()));
+            return Err(AppError::Unavailable(
+                "Graph gateway rejected the request".into(),
+            ));
         }
         let body: Value = response
             .json()
@@ -79,14 +86,17 @@ impl GraphService {
         let timestamp = data["_meta"]["block"]["timestamp"].as_i64();
         let now = chrono::Utc::now().timestamp();
         let fresh = timestamp.is_some_and(|ts| is_fresh(ts, now, MAX_INDEX_AGE_SECS));
-        let indexed_at = timestamp.and_then(|ts| chrono::DateTime::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339()));
+        let indexed_at = timestamp
+            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339()));
         let agents = data["agents"]
             .as_array()
             .cloned()
             .unwrap_or_default()
             .into_iter()
             .map(|agent| {
-                let active = agent["registrationFile"]["active"].as_bool().unwrap_or(false);
+                let active = agent["registrationFile"]["active"]
+                    .as_bool()
+                    .unwrap_or(false);
                 let endpoint = agent["registrationFile"]["mcpEndpoint"]
                     .as_str()
                     .or_else(|| agent["registrationFile"]["a2aEndpoint"].as_str())
@@ -96,7 +106,10 @@ impl GraphService {
                 } else if !active {
                     Some("Registration is not active.".to_string())
                 } else if endpoint.contains("localhost") {
-                    Some("Advertised endpoint is localhost, not an operational public service.".to_string())
+                    Some(
+                        "Advertised endpoint is localhost, not an operational public service."
+                            .to_string(),
+                    )
                 } else {
                     None
                 };

@@ -38,7 +38,9 @@ impl SettlementService {
                 .build()
                 .map_err(|_| AppError::InternalServerError("HTTP client unavailable".into()))?,
             rpc_url,
-            contract: std::sync::Mutex::new(contract.or(persisted).map(|v| address(&v)).transpose()?),
+            contract: std::sync::Mutex::new(
+                contract.or(persisted).map(|v| address(&v)).transpose()?,
+            ),
             persist_path,
         })
     }
@@ -119,11 +121,7 @@ impl SettlementService {
         let code = self.rpc("eth_getCode", json!([contract, "latest"])).await?;
         match code.as_str() {
             Some(c) if c.len() > 4 && c != "0x" && c != "0x0" => {}
-            _ => {
-                return Err(AppError::Conflict(
-                    "No bytecode at that Arc address".into(),
-                ))
-            }
+            _ => return Err(AppError::Conflict("No bytecode at that Arc address".into())),
         }
         let decimals = self
             .rpc(
@@ -401,7 +399,13 @@ mod tests {
             "logs": []
         });
         assert_eq!(
-            validate_receipt(&session, &draft, receipt["transactionHash"].as_str().unwrap(), &receipt).unwrap(),
+            validate_receipt(
+                &session,
+                &draft,
+                receipt["transactionHash"].as_str().unwrap(),
+                &receipt
+            )
+            .unwrap(),
             ReceiptOutcome::Reverted
         );
     }

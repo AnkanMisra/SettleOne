@@ -59,9 +59,8 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| "https://rpc.testnet.arc.network".into()),
             std::env::var("ARC_SETTLEMENT_ADDRESS").ok(),
             Some(std::path::PathBuf::from(
-                std::env::var("ARC_SETTLEMENT_PATH").unwrap_or_else(|_| {
-                    "/tmp/settleone-arc-contract.json".into()
-                }),
+                std::env::var("ARC_SETTLEMENT_PATH")
+                    .unwrap_or_else(|_| "/tmp/settleone-arc-contract.json".into()),
             )),
         )?),
         auth_origin: std::env::var("APP_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into()),
@@ -407,18 +406,18 @@ mod tests {
             .await;
         response.assert_status(StatusCode::NOT_FOUND);
         let session = store.get("prepared-session", &wallet().1).unwrap();
-        assert_eq!(session.status, models::session::SessionStatus::AwaitingApproval);
+        assert_eq!(
+            session.status,
+            models::session::SessionStatus::AwaitingApproval
+        );
         assert!(session.tx_hash.is_none());
     }
 
     #[tokio::test]
     async fn mempool_transaction_pins_submitted_and_mismatch_does_not() {
         let (_, owner) = wallet();
-        let mut session = models::session::Session::new(
-            "x".into(),
-            owner.clone(),
-            "2000000".into(),
-        );
+        let mut session =
+            models::session::Session::new("x".into(), owner.clone(), "2000000".into());
         session.payments.push(models::session::Payment {
             id: "pay-1".into(),
             recipient: "0x1111111111111111111111111111111111111111".into(),
@@ -456,7 +455,10 @@ mod tests {
         response.assert_status_ok();
         let session = store.get("prepared-session", &owner).unwrap();
         assert_eq!(session.status, models::session::SessionStatus::Submitted);
-        assert_eq!(session.tx_hash.as_deref(), Some(format!("0x{}", "11".repeat(32))).as_deref());
+        assert_eq!(
+            session.tx_hash.as_deref(),
+            Some(format!("0x{}", "11".repeat(32))).as_deref()
+        );
         server
             .post("/api/session/prepared-session/finalize")
             .add_header(h, v)
@@ -468,11 +470,8 @@ mod tests {
     #[tokio::test]
     async fn reverted_receipt_marks_failed_without_confirming_payments() {
         let (_, owner) = wallet();
-        let mut session = models::session::Session::new(
-            "x".into(),
-            owner.clone(),
-            "2000000".into(),
-        );
+        let mut session =
+            models::session::Session::new("x".into(), owner.clone(), "2000000".into());
         session.payments.push(models::session::Payment {
             id: "pay-1".into(),
             recipient: "0x1111111111111111111111111111111111111111".into(),
@@ -519,7 +518,10 @@ mod tests {
             .assert_status_ok();
         let session = store.get("prepared-session", &owner).unwrap();
         assert_eq!(session.status, models::session::SessionStatus::Failed);
-        assert_eq!(session.payments[0].status, models::session::PaymentStatus::Pending);
+        assert_eq!(
+            session.payments[0].status,
+            models::session::PaymentStatus::Pending
+        );
         assert!(session.failure.is_some());
     }
 }
