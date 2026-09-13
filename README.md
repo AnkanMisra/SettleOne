@@ -96,16 +96,6 @@ cd contracts && ./node_modules/.bin/hardhat test test/DraftSettlement.test.ts
 cd frontend && ./node_modules/.bin/tsc --noEmit
 ```
 
-## Docs
-
-- [`docs/arc-continuity-evidence.md`](docs/arc-continuity-evidence.md): live Arc hashes
-- [`docs/architecture.md`](docs/architecture.md): payment path
-- [`docs/review-fixes.md`](docs/review-fixes.md): signing lock and contract registration
-- [`docs/ens-access-notes.md`](docs/ens-access-notes.md): Sepolia ENSv2
-- [`docs/graph-access-notes.md`](docs/graph-access-notes.md): Agent0 index and freshness
-- [`docs/ai-disclosure.md`](docs/ai-disclosure.md): AI-assisted files
-- [`docs/demo-script.md`](docs/demo-script.md): recording outline
-
 ## Repo layout
 
 ```
