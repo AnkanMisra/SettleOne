@@ -47,16 +47,6 @@ A second tab cannot sign the same draft. Reset of a locked draft waits until exp
 | API | Rust, Axum, SQLite |
 | Contract | Solidity 0.8.20, Hardhat, `settleBatch` |
 
-Yellow Network, LI.FI, and Base Sepolia MockUSDC are leftover from HackMoney. They are not on this payment path.
-
-## Sponsor work (honest)
-
-**Arc.** Working app, architecture notes, and a funded testnet batch. Continuity mainnet by 30 September is not done. A 2–4 minute human-voice video is still required for ETHGlobal.
-
-**ENSv2.** Sepolia helpers and an Identity panel: resolve the current resolver, grant `service.metadata` only, secondary text update, forbidden `setAddr`, revoke. Mainnet `ankanmisra.eth` is not a Sepolia registration. No grant or revoke hash is in this repo yet.
-
-**The Graph / Agent0.** Server review of subgraph `6wQRC7geo9XYAhckfmfo8kbMRLeWU8KQd3XsJqFKmZLT`. A live index dated 4 March 2026 is treated as stale and mapped to `exclude`. Graph never types an amount. Needs `GRAPH_API_KEY` or `GRAPH_SUBGRAPH_URL` on the server.
-
 ## Run it
 
 Docker:
