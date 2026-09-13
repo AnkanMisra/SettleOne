@@ -86,7 +86,11 @@ export function useSettlement() {
       ) {
         throw new Error('Prepared transaction differs from this preview');
       }
-      const [decimals, balance, allowance] = await Promise.all([
+      const rpcChain = await client.getChainId();
+      if (rpcChain !== arcTestnet.id) {
+        throw new Error('Switch MetaMask to Arc Testnet before paying');
+      }
+      const [decimals, tokenBalance, allowance, native] = await Promise.all([
         client.readContract({ address: ARC_USDC, abi: erc20Abi, functionName: 'decimals' }),
         client.readContract({
           address: ARC_USDC,
@@ -100,11 +104,16 @@ export function useSettlement() {
           functionName: 'allowance',
           args: [address, contract],
         }),
+        client.getBalance({ address }),
       ]);
       if (decimals !== session.token_decimals) throw new Error('Token decimals changed');
       const total = BigInt(session.total_amount);
-      if (balance <= total) {
-        throw new Error('Fund Arc USDC for payments and gas at faucet.circle.com');
+      const nativeAsToken = native / (BigInt(10) ** BigInt(12));
+      const spendable = tokenBalance > nativeAsToken ? tokenBalance : nativeAsToken;
+      if (spendable < total) {
+        throw new Error(
+          'This Arc wallet does not have enough USDC for the batch. Confirm Arc Testnet and the same account that holds the faucet USDC.',
+        );
       }
       if (allowance < total) {
         setProgress('Approve the exact USDC total in your wallet');
@@ -120,9 +129,8 @@ export function useSettlement() {
         });
         const fees = await client.estimateFeesPerGas();
         const maxFee = fees.maxFeePerGas ?? fees.gasPrice ?? BigInt(0);
-        const native = await client.getBalance({ address });
-        if (native <= total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
-          throw new Error('Insufficient USDC reserve for approval and payment gas');
+        if (native < total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
+          throw new Error('Not enough Arc USDC left for approval gas plus the batch');
         }
         const approvalHash = await wallet.sendTransaction({
           account: address,
@@ -137,9 +145,9 @@ export function useSettlement() {
       const gas = await client.estimateGas({ account: address, to: contract, data });
       const fees = await client.estimateFeesPerGas();
       const maxFee = fees.maxFeePerGas ?? fees.gasPrice ?? BigInt(0);
-      const native = await client.getBalance({ address });
-      if (native < total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
-        throw new Error('Insufficient USDC gas reserve after payments');
+      const nativeAfter = await client.getBalance({ address });
+      if (nativeAfter < total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
+        throw new Error('Not enough Arc USDC left for gas after the batch');
       }
       await api.beginSigning(session.id, draft.draft_id);
       const hash = await wallet.sendTransaction({
