@@ -21,6 +21,7 @@ const statusStyles: Record<
   SessionData['status'],
   { dot: string; text: string; bg: string }
 > = {
+  signing: {dot: 'bg-amber-400', text: 'text-amber-400', bg: 'bg-amber-500/10'},
   draft: {
     dot: 'bg-gray-400',
     text: 'text-gray-300',
@@ -202,7 +203,8 @@ export function SessionCard({
         </div>
       )}
 
-      {(session.status === 'awaiting_approval' || session.status === 'failed') && (
+      {session.status === 'signing' && <p className="text-amber-300 text-sm">Signing is locked across tabs. Verify any retained transaction. If signing was rejected, reset after the expiry shown above; Arc must confirm the draft was not paid.</p>}
+      {(session.status === 'awaiting_approval' || session.status === 'signing' || session.status === 'failed') && (
         <button
           type="button"
           disabled={isLoading}

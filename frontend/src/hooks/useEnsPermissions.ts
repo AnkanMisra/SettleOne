@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useAccount, usePublicClient, useWalletClient, useSwitchChain } from 'wagmi';
 import { sepolia } from 'wagmi/chains';
-import { getAddress, isAddress } from 'viem';
+import { BaseError, ContractFunctionRevertedError, getAddress, isAddress } from 'viem';
 import { normalize } from 'viem/ens';
 import {
   SERVICE_METADATA_KEY,
@@ -135,7 +135,11 @@ export function useEnsPermissions() {
         if (result.status === 'fulfilled') {
           note(`${label} unexpectedly simulated successfully. Do not claim this grant is narrow.`);
         } else {
-          note(`${label} rejected as required: ${result.reason instanceof Error ? result.reason.message : 'authorization revert'}`);
+          const revert = result.reason instanceof BaseError
+            ? result.reason.walk(e => e instanceof ContractFunctionRevertedError) : null;
+          note(revert instanceof ContractFunctionRevertedError
+            ? `${label} reverted in simulation. Inspect the revert to confirm it is an authorization denial: ${revert.shortMessage}`
+            : `${label} could not be verified: RPC or simulation failure is not permission evidence.`);
         }
       });
     } catch (e) {

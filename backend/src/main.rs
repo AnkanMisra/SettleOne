@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
             std::env::var("ARC_SETTLEMENT_ADDRESS").ok(),
             Some(std::path::PathBuf::from(
                 std::env::var("ARC_SETTLEMENT_PATH")
-                    .unwrap_or_else(|_| "/tmp/settleone-arc-contract.json".into()),
+                    .unwrap_or_else(|_| "settleone-arc-contract.json".into()),
             )),
         )?),
         auth_origin: std::env::var("APP_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into()),
@@ -111,6 +111,10 @@ fn create_app(state: AppState) -> Router {
             post(api::session::prepare_session),
         )
         .route("/api/session/:id/reset", post(api::session::reset_session))
+        .route(
+            "/api/session/:id/signing",
+            post(api::session::begin_signing),
+        )
         .route("/api/session", post(api::session::create_session))
         .route("/api/session/:id", get(api::session::get_session))
         .route("/api/session/:id/payment", post(api::session::add_payment))
@@ -198,6 +202,46 @@ mod tests {
             HeaderName::from_static("authorization"),
             HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
         )
+    }
+    #[tokio::test]
+    async fn signing_lock_blocks_second_tab_reset_and_resign() {
+        let (state, owner, token) = prepared_app("http://127.0.0.1:1".into());
+        let store = state.session_store.clone();
+        let server = TestServer::new(create_app(state)).unwrap();
+        let (h, v) = header(&token);
+        server
+            .post("/api/session/prepared-session/signing")
+            .add_header(h.clone(), v.clone())
+            .json(&json!({"draft_id":"different-preview"}))
+            .await
+            .assert_status(StatusCode::CONFLICT);
+        server
+            .post("/api/session/prepared-session/signing")
+            .add_header(h.clone(), v.clone())
+            .json(&json!({"draft_id":format!("0x{}","ab".repeat(32))}))
+            .await
+            .assert_status_ok();
+        server
+            .post("/api/session/prepared-session/signing")
+            .add_header(h.clone(), v.clone())
+            .json(&json!({"draft_id":format!("0x{}","ab".repeat(32))}))
+            .await
+            .assert_status(StatusCode::CONFLICT);
+        server
+            .post("/api/session/prepared-session/reset")
+            .add_header(h.clone(), v.clone())
+            .await
+            .assert_status(StatusCode::CONFLICT);
+        server
+            .post("/api/session/prepared-session/payment")
+            .add_header(h, v)
+            .json(&json!({"recipient":"0x1111111111111111111111111111111111111111","amount":"1"}))
+            .await
+            .assert_status(StatusCode::CONFLICT);
+        assert_eq!(
+            store.get("prepared-session", &owner).unwrap().status,
+            models::session::SessionStatus::Signing
+        );
     }
     #[tokio::test]
     async fn settlement_contract_starts_unconfigured() {

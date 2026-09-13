@@ -36,8 +36,12 @@ export function useDeploySettlement() {
       if (!wallet || !client || !address || chainId !== arcTestnet.id) {
         throw new Error('Connect the payer wallet on Arc Testnet to deploy');
       }
-      const existing = await refresh();
-      if (existing) return existing;
+      const current = await api.settlementContract();
+      setContract(current.contract);
+      if (current.contract) return current.contract;
+      if (current.registration_admin?.toLowerCase() !== address.toLowerCase()) {
+        throw new Error('Contract deployment requires the server-configured SETTLEMENT_ADMIN wallet. No deployment was sent.');
+      }
       const hash = await wallet.deployContract({
         abi: deployAbi,
         bytecode: SESSION_SETTLEMENT_BYTECODE,

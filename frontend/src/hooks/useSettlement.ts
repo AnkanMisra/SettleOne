@@ -4,6 +4,7 @@ import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { encodeFunctionData, erc20Abi, getAddress, isHex, parseAbi } from 'viem';
 import { arcTestnet } from '@/lib/wagmi';
 import type { SessionData } from '@/lib/api';
+import { api } from '@/lib/api';
 
 const batchAbi = parseAbi([
   'function settleBatch(bytes32 draftId, (address recipient,uint256 amount)[] settlements, uint256 totalLimit, uint256 expiresAt)',
@@ -140,6 +141,7 @@ export function useSettlement() {
       if (native < total * BigInt(10) ** BigInt(12) + gas * maxFee * BigInt(2)) {
         throw new Error('Insufficient USDC gas reserve after payments');
       }
+      await api.beginSigning(session.id, draft.draft_id);
       const hash = await wallet.sendTransaction({
         account: address,
         chain: arcTestnet,
@@ -148,6 +150,7 @@ export function useSettlement() {
       });
       sent = true;
       localStorage.setItem(retainedTxKey(session.id), hash);
+      await submitted(hash);
       setProgress('Waiting for Arc inclusion');
       const receipt = await client.waitForTransactionReceipt({ hash });
       setProgress('Verifying the Arc receipt');
@@ -158,7 +161,7 @@ export function useSettlement() {
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Payment failed';
       if (walletRejected(message)) {
-        setError('Wallet rejected the signature. No settlement transaction was submitted.');
+        setError('Wallet rejected the signature. If signing was locked, refresh the session and wait for expiry before resetting.');
       } else {
         setError(
           message +

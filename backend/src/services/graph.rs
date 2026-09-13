@@ -85,7 +85,8 @@ impl GraphService {
         let data = body.get("data").cloned().unwrap_or(Value::Null);
         let timestamp = data["_meta"]["block"]["timestamp"].as_i64();
         let now = chrono::Utc::now().timestamp();
-        let fresh = timestamp.is_some_and(|ts| is_fresh(ts, now, MAX_INDEX_AGE_SECS));
+        let fresh = timestamp.is_some_and(|ts| is_fresh(ts, now, MAX_INDEX_AGE_SECS))
+            && data["_meta"]["hasIndexingErrors"] == false;
         let indexed_at = timestamp
             .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0).map(|dt| dt.to_rfc3339()));
         let agents = data["agents"]
@@ -105,6 +106,8 @@ impl GraphService {
                     Some("Index is stale; do not treat this as current eligibility.".to_string())
                 } else if !active {
                     Some("Registration is not active.".to_string())
+                } else if endpoint.is_empty() {
+                    Some("No service endpoint was registered.".to_string())
                 } else if endpoint.contains("localhost") {
                     Some(
                         "Advertised endpoint is localhost, not an operational public service."
@@ -126,6 +129,8 @@ impl GraphService {
             "fresh": fresh,
             "indexed_at": indexed_at,
             "deployment": data["_meta"]["deployment"],
+            "retrieved_at": chrono::Utc::now().to_rfc3339(),
+            "network": "Ethereum Sepolia",
             "note": if fresh {
                 "Evidence is recent enough for manual review. Amounts still require explicit payer approval."
             } else {
@@ -137,12 +142,18 @@ impl GraphService {
 }
 
 pub fn is_fresh(timestamp: i64, now: i64, max_age: i64) -> bool {
-    now.saturating_sub(timestamp) <= max_age
+    timestamp <= now && now.saturating_sub(timestamp) <= max_age
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn future_index_is_not_current_evidence() {
+        assert!(!is_fresh(200, 100, 1000));
+        assert!(is_fresh(100, 100, 1000));
+    }
 
     #[test]
     fn march_2026_index_is_stale_in_september() {

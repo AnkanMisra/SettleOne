@@ -2,7 +2,7 @@
 rootDir = "backend"
 
 [deploy]
-startCommand = "./bin/settleone-backend"
+startCommand = "env HOST=0.0.0.0 ./bin/settleone-backend"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

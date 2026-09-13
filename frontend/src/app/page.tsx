@@ -131,7 +131,7 @@ export default function Home() {
                   setApproved(null);
                 })
               }
-              onSettle={() => act(() => settlement.settle(session, flow.finalizeSession))}
+              onSettle={() => act(async () => { await settlement.settle(session, flow.finalizeSession); await flow.refreshSession(); })}
               onVerify={() =>
                 act(async () => {
                   const hash = session.tx_hash || localStorage.getItem(retainedTxKey(session.id));

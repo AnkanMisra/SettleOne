@@ -26,17 +26,20 @@ export function useENS(
   const publicClient = usePublicClient({ chainId: sepolia.id });
 
   const resolveENS = useCallback(
-    async (name: string) => {
+    async (name: string, isCurrent: () => boolean) => {
+      const publish = (next: ENSResolutionResult) => {
+        if (isCurrent()) setResult(next);
+      };
       if (!name || !publicClient) {
-        setResult({ name, address: null, isLoading: false });
+        publish({ name, address: null, isLoading: false });
         return;
       }
       if (isAddress(name)) {
-        setResult({ name, address: name, isLoading: false });
+        publish({ name, address: name, isLoading: false });
         return;
       }
       if (!isEnsName(name)) {
-        setResult({
+        publish({
           name,
           address: null,
           isLoading: false,
@@ -44,7 +47,7 @@ export function useENS(
         });
         return;
       }
-      setResult((prev) => ({ ...prev, isLoading: true, error: undefined }));
+      publish({ name, address: null, isLoading: true });
       try {
         const normalizedName = normalize(name);
         const address = await publicClient.getEnsAddress({
@@ -62,9 +65,9 @@ export function useENS(
           } catch {
             avatar = undefined;
           }
-          setResult({ name, address, avatar, isLoading: false });
+          publish({ name, address, avatar, isLoading: false });
         } else {
-          setResult({
+          publish({
             name,
             address: null,
             isLoading: false,
@@ -72,7 +75,7 @@ export function useENS(
           });
         }
       } catch (error) {
-        setResult({
+        publish({
           name,
           address: null,
           isLoading: false,
@@ -85,13 +88,17 @@ export function useENS(
 
   useEffect(() => {
     if (!enabled) return;
+    let current = true;
     const timeoutId = setTimeout(() => {
-      void resolveENS(nameOrAddress);
+      void resolveENS(nameOrAddress, () => current);
     }, debounceMs);
-    return () => clearTimeout(timeoutId);
+    return () => { current = false; clearTimeout(timeoutId); };
   }, [nameOrAddress, debounceMs, enabled, resolveENS]);
 
-  return result;
+  // Never attach the previous name's address to newly typed input.
+  return result.name === nameOrAddress ? result : {
+    name: nameOrAddress, address: null, isLoading: enabled && nameOrAddress.length > 0,
+  };
 }
 
 export function useENSName(address: string | undefined) {

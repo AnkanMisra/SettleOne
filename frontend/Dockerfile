@@ -28,7 +28,7 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_ALCHEMY_ID=
 ARG NEXT_PUBLIC_WALLETCONNECT_ID=
-ARG NEXT_PUBLIC_ARC_RPC=https://rpc.arc.circle.com
+ARG NEXT_PUBLIC_ARC_RPC=https://rpc.testnet.arc.network
 ARG NEXT_PUBLIC_YELLOW_ENV=
 
 # Expose them as ENV so Next.js picks them up during `next build`

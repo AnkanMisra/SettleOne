@@ -11,6 +11,7 @@ pub const ARC_USDC: &str = "0x3600000000000000000000000000000000000000";
 pub enum SessionStatus {
     Draft,
     AwaitingApproval,
+    Signing,
     Submitted,
     Confirmed,
     Failed,
@@ -104,7 +105,7 @@ impl Session {
     pub fn invalidate_approval(&mut self) -> Result<(), AppError> {
         if matches!(
             self.status,
-            SessionStatus::Submitted | SessionStatus::Confirmed
+            SessionStatus::Signing | SessionStatus::Submitted | SessionStatus::Confirmed
         ) {
             return Err(AppError::Conflict(
                 "Submitted or confirmed payments cannot be edited".into(),

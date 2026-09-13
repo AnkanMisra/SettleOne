@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create a non-root user for security
 RUN useradd --system --no-create-home --uid 1001 settleone
+RUN mkdir -p /data && chown settleone:settleone /data
 USER settleone
 
 WORKDIR /app
@@ -61,9 +62,12 @@ COPY --from=builder /app/target/release/settleone-backend ./settleone-backend
 
 # Default environment — all overridable at runtime via docker compose or -e flags
 ENV PORT=3001
+ENV HOST=0.0.0.0
+ENV DATABASE_PATH=/data/settleone.sqlite
+ENV ARC_SETTLEMENT_PATH=/data/arc-contract.json
 ENV RUST_LOG=settleone_backend=info,tower_http=info
 ENV ETH_RPC_URL=https://eth.llamarpc.com
-ENV ARC_RPC_URL=https://rpc.arc.circle.com
+ENV ARC_RPC_URL=https://rpc.testnet.arc.network
 ENV LIFI_API_URL=https://li.quest/v1
 
 EXPOSE 3001

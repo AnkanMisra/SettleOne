@@ -8,6 +8,7 @@ Read these first:
 - `docs/runbook-live-demo.md` how to deploy and prove on Arc once keys exist
 - `docs/demo-script.md` 2-4 minute recording outline
 - `docs/ai-disclosure.md` AI-assisted files
+- `docs/review-fixes.md` contract trust, signing-lock recovery, and deployment settings
 - `docs/ens-access-notes.md` and `docs/graph-access-notes.md`
 
 Arc Testnet SessionSettlement is at `0x178daba1115968e073cff667d276c752b319b019`. A funded 1 USDC batch is in `0x126b478c6ff8332bae2597361816d999da672af1def5e29c78399b0d3b5691b1`. There is still no public hosting URL or demo recording.

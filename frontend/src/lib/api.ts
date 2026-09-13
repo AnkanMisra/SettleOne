@@ -14,7 +14,7 @@ export interface PreparedDraft {
 export interface SessionData {
   id: string;
   user: string;
-  status: 'draft' | 'awaiting_approval' | 'submitted' | 'confirmed' | 'failed';
+  status: 'draft' | 'awaiting_approval' | 'signing' | 'submitted' | 'confirmed' | 'failed';
   chain_id: number;
   token: string;
   token_decimals: number;
@@ -141,13 +141,16 @@ class ApiClient {
   async prepareSession(id: string): Promise<{session: SessionData}> {
     return this.request(`/api/session/${encodeURIComponent(id)}/prepare`, {method: 'POST'});
   }
+  async beginSigning(id: string, draft_id: string): Promise<{session: SessionData}> {
+    return this.request(`/api/session/${encodeURIComponent(id)}/signing`, {method: 'POST', body: JSON.stringify({draft_id})});
+  }
   async resetSession(id: string): Promise<{session: SessionData}> {
     return this.request(`/api/session/${encodeURIComponent(id)}/reset`, {method: 'POST'});
   }
   async finalizeSession(id: string, tx_hash: string): Promise<{session: SessionData}> {
     return this.request(`/api/session/${encodeURIComponent(id)}/finalize`, {method: 'POST', body: JSON.stringify({tx_hash})});
   }
-  async settlementContract(): Promise<{contract: string | null}> {
+  async settlementContract(): Promise<{contract: string | null; registration_admin: string | null}> {
     return this.request('/api/settlement/contract');
   }
   async configureSettlement(address: string): Promise<{contract: string}> {

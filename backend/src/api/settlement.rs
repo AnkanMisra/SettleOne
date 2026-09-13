@@ -10,7 +10,8 @@ pub struct ConfigureRequest {
 
 pub async fn get_contract(State(state): State<AppState>) -> Result<Json<Value>, AppError> {
     Ok(Json(
-        json!({"contract": state.settlement_service.current_contract()?}),
+        json!({"contract": state.settlement_service.current_contract()?,
+            "registration_admin": std::env::var("SETTLEMENT_ADMIN").ok().and_then(|value| address(&value).ok())}),
     ))
 }
 

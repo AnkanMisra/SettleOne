@@ -140,9 +140,57 @@ pub async fn reset_session(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     let owner = auth::owner(&state.session_store, &headers)?;
+    let snapshot = state.session_store.get(&id, &owner)?;
+    if snapshot.status == SessionStatus::Signing {
+        state.settlement_service.can_release(&snapshot).await?;
+        let before = serde_json::to_string(&snapshot)?;
+        let session = state.session_store.edit(&id, &owner, |session| {
+            if serde_json::to_string(session)? != before {
+                return Err(AppError::Conflict(
+                    "Session changed; refresh before resetting".into(),
+                ));
+            }
+            session.status = SessionStatus::AwaitingApproval;
+            session.invalidate_approval()
+        })?;
+        return Ok(Json(json!({"session":session})));
+    }
     let session = state
         .session_store
         .edit(&id, &owner, |session| session.invalidate_approval())?;
+    Ok(Json(json!({"session":session})))
+}
+/// Persist the signing lock before opening a wallet transaction prompt.
+#[derive(Deserialize)]
+pub struct SigningRequest {
+    pub draft_id: String,
+}
+pub async fn begin_signing(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<SigningRequest>,
+) -> Result<Json<Value>, AppError> {
+    let owner = auth::owner(&state.session_store, &headers)?;
+    let session = state.session_store.edit(&id, &owner, |session| {
+        if session.status != SessionStatus::AwaitingApproval {
+            return Err(AppError::Conflict(
+                "This draft is already locked or not prepared".into(),
+            ));
+        }
+        if session
+            .prepared
+            .as_ref()
+            .map(|draft| draft.draft_id.as_str())
+            != Some(payload.draft_id.as_str())
+        {
+            return Err(AppError::Conflict(
+                "Draft changed; review the current preview before signing".into(),
+            ));
+        }
+        session.status = SessionStatus::Signing;
+        Ok(())
+    })?;
     Ok(Json(json!({"session":session})))
 }
 pub async fn finalize_session(
@@ -165,7 +213,7 @@ pub async fn finalize_session(
     }
     if !matches!(
         snapshot.status,
-        SessionStatus::AwaitingApproval | SessionStatus::Submitted
+        SessionStatus::AwaitingApproval | SessionStatus::Signing | SessionStatus::Submitted
     ) {
         return Err(AppError::Conflict(
             "Session is not awaiting a settlement".into(),

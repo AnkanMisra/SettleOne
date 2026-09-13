@@ -98,6 +98,14 @@ impl SettlementService {
     pub async fn adopt(&self, candidate: &str, operator: &str) -> Result<String, AppError> {
         let candidate = address(candidate)?;
         let operator = address(operator)?;
+        let trusted = std::env::var("SETTLEMENT_ADMIN")
+            .ok()
+            .and_then(|value| address(&value).ok());
+        if !is_trusted_operator(trusted.as_deref(), &operator) {
+            return Err(AppError::Unauthorized(
+                "Only the server-configured SETTLEMENT_ADMIN may register a contract".into(),
+            ));
+        }
         self.verify_arc_usdc_contract(&candidate).await?;
         let owner = self
             .rpc(
@@ -122,13 +130,15 @@ impl SettlementService {
             }
             return Ok(existing.clone());
         }
-        *slot = Some(candidate.clone());
         if let Some(path) = &self.persist_path {
             if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                std::fs::create_dir_all(parent).map_err(|_| {
+                    AppError::InternalServerError("Cannot create contract storage directory".into())
+                })?;
             }
-            let _ = std::fs::write(
-                path,
+            let temporary = path.with_extension("tmp");
+            std::fs::write(
+                &temporary,
                 serde_json::to_string_pretty(&json!({
                     "network": "arc",
                     "chainId": ARC_CHAIN_ID,
@@ -136,13 +146,31 @@ impl SettlementService {
                     "token": ARC_USDC,
                     "timestamp": chrono::Utc::now().to_rfc3339(),
                 }))?,
-            );
+            )
+            .map_err(|_| {
+                AppError::InternalServerError("Cannot persist contract configuration".into())
+            })?;
+            std::fs::rename(&temporary, path).map_err(|_| {
+                AppError::InternalServerError("Cannot persist contract configuration".into())
+            })?;
         }
+        *slot = Some(candidate.clone());
         Ok(candidate)
     }
     async fn verify_arc_usdc_contract(&self, contract: &str) -> Result<(), AppError> {
         self.check_chain().await?;
         let code = self.rpc("eth_getCode", json!([contract, "latest"])).await?;
+        // Solidity 0.8.20, optimizer 200; Arc USDC immutable filled from the checked-in contract.
+        let runtime = code
+            .as_str()
+            .and_then(|value| value.strip_prefix("0x"))
+            .and_then(|value| hex::decode(value).ok())
+            .ok_or_else(|| AppError::Conflict("Invalid contract bytecode".into()))?;
+        if hash(&runtime) != "0x479977b286b051b818d2042202b521b309b9a3c620fae31538a833538e05e468" {
+            return Err(AppError::Conflict(
+                "Contract is not the approved SessionSettlement implementation".into(),
+            ));
+        }
         match code.as_str() {
             Some(c) if c.len() > 4 && c != "0x" && c != "0x0" => {}
             _ => return Err(AppError::Conflict("No bytecode at that Arc address".into())),
@@ -217,6 +245,51 @@ impl SettlementService {
         }
         validate_receipt(session, draft, tx_hash, &receipt)
     }
+
+    /// A signing lock can only be released once Arc proves its calldata can no longer execute.
+    pub async fn can_release(&self, session: &Session) -> Result<(), AppError> {
+        let draft = session
+            .prepared
+            .as_ref()
+            .ok_or_else(|| AppError::Conflict("Prepared draft missing".into()))?;
+        if chrono::Utc::now().timestamp() <= draft.expires_at as i64 {
+            return Err(AppError::Conflict(
+                "Signing is locked until the draft expires. Verify any retained transaction."
+                    .into(),
+            ));
+        }
+        self.check_chain().await?;
+        let block = self
+            .rpc("eth_getBlockByNumber", json!(["latest", false]))
+            .await?;
+        let timestamp = block["timestamp"]
+            .as_str()
+            .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+            .ok_or_else(|| AppError::Unavailable("Arc timestamp unavailable".into()))?;
+        if timestamp <= draft.expires_at {
+            return Err(AppError::Conflict("Signing is locked. Verify any transaction, or wait until the draft expires before resetting.".into()));
+        }
+        let data = format!(
+            "{}{:0>64}{}",
+            &hash(b"isDraftSettled(address,bytes32)")[..10],
+            &session.user[2..],
+            &draft.draft_id[2..]
+        );
+        let result = self
+            .rpc(
+                "eth_call",
+                json!([{"to":draft.contract,"data":data},block["number"]]),
+            )
+            .await?;
+        if result.as_str() != Some(&format!("0x{}", "0".repeat(64))) {
+            return Err(AppError::Conflict("Draft settled or state unavailable. Reconcile the original transaction instead of resetting.".into()));
+        }
+        Ok(())
+    }
+}
+
+fn is_trusted_operator(trusted: Option<&str>, operator: &str) -> bool {
+    trusted.is_some_and(|trusted| trusted == operator)
 }
 
 pub fn require_known_transaction(tx: &Value) -> Result<(), AppError> {
@@ -356,6 +429,46 @@ mod tests {
     use super::*;
     use crate::models::session::{Payment, PaymentStatus, Session, SessionStatus};
     use chrono::Utc;
+
+    #[test]
+    fn public_wallet_is_not_a_configuration_admin() {
+        let attacker = "0x1111111111111111111111111111111111111111";
+        let operator = "0x2222222222222222222222222222222222222222";
+        assert!(!is_trusted_operator(None, attacker));
+        assert!(!is_trusted_operator(Some(operator), attacker));
+        assert!(is_trusted_operator(Some(operator), operator));
+    }
+
+    #[tokio::test]
+    async fn signing_release_requires_expiry_and_unsettled_arc_state() {
+        use axum::{routing::post, Json, Router};
+        for (settled, expected) in [(false, true), (true, false)] {
+            let app = Router::new().route(
+                "/",
+                post(move |Json(body): Json<Value>| async move {
+                    let result = match body["method"].as_str().unwrap() {
+                        "eth_chainId" => json!("0x4cef52"),
+                        "eth_getBlockByNumber" => {
+                            json!({"timestamp":"0x70000000","number":"0x123"})
+                        }
+                        "eth_call" => json!(format!("0x{:064x}", u8::from(settled))),
+                        _ => Value::Null,
+                    };
+                    Json(json!({"jsonrpc":"2.0","id":1,"result":result}))
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/", listener.local_addr().unwrap());
+            let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let service = SettlementService::new(url, None).unwrap();
+            let (mut session, mut draft) = sample();
+            draft.expires_at = 1;
+            session.prepared = Some(draft);
+            session.status = SessionStatus::Signing;
+            assert_eq!(service.can_release(&session).await.is_ok(), expected);
+            task.abort();
+        }
+    }
 
     fn sample() -> (Session, PreparedDraft) {
         let mut session = Session::new(

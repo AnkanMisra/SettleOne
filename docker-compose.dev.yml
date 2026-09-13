@@ -65,7 +65,7 @@ services:
       # Keep node_modules from the image (do NOT mount ./frontend/node_modules)
     environment:
       NODE_ENV: development
-      NEXT_PUBLIC_API_URL: "http://backend:3001"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
       NEXT_TELEMETRY_DISABLED: "1"
     # In dev mode Next.js starts faster — reduce healthcheck delay
     healthcheck:
